@@ -5,7 +5,7 @@ import com.app.ewallet.exception.WalletAccessDeniedException;
 import com.app.ewallet.exception.WalletNotFoundException;
 import com.app.ewallet.model.Wallet;
 import com.app.ewallet.repository.WalletRepository;
-import com.app.ewallet.service.IWalletQueryService;
+import com.app.ewallet.service.interfaces.IWalletQueryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;

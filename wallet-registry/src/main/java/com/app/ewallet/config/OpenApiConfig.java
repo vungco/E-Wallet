@@ -19,11 +19,11 @@ public class OpenApiConfig {
                 .info(new Info()
                         .title("Wallet Registry API")
                         .description("""
-                                **Auth:** `POST /api/v1/auth/register|login|refresh|logout` — công khai. `POST /api/v1/auth/logout/all` và **Wallets** cần header `Authorization: Bearer <access_token>`.
+                                **Auth:** `register` chỉ tạo tài khoản + ví, **không** trả token. `login` trả access + refresh; `refresh|logout` như mô tả. `logout/all` và **Wallets** cần `Authorization: Bearer <access_token>`.
 
                                 **Internal** (`/internal/**`): khi `REQUIRE_INTERNAL_KEY=true`, gửi `X-Internal-Api-Key` = `INTERNAL_API_KEY`.
 
-                                **Refresh token:** lưu SHA-256 (64 hex) trong DB; client giữ plaintext refresh để gọi `/refresh`.
+                                **Refresh token:** chỉ cấp khi `login` / `refresh`; DB lưu SHA-256 (64 hex).
                                 """)
                         .version("1.0.0"))
                 .components(new Components()

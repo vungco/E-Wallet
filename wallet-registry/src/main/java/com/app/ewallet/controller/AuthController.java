@@ -4,9 +4,10 @@ import com.app.ewallet.config.OpenApiConfig;
 import com.app.ewallet.controller.dto.LoginRequest;
 import com.app.ewallet.controller.dto.RefreshTokenRequest;
 import com.app.ewallet.controller.dto.RegisterRequest;
+import com.app.ewallet.controller.dto.RegisterResponse;
 import com.app.ewallet.controller.dto.TokenResponse;
 import com.app.ewallet.security.UserPrincipal;
-import com.app.ewallet.service.IAuthService;
+import com.app.ewallet.service.interfaces.IAuthService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -32,13 +33,13 @@ public class AuthController {
 
     @PostMapping("/register")
     @ResponseStatus(HttpStatus.CREATED)
-    @Operation(summary = "Đăng ký + tạo ví + cấp access & refresh token")
-    public TokenResponse register(@Valid @RequestBody RegisterRequest request) {
+    @Operation(summary = "Đăng ký + tạo ví (không cấp token — dùng login sau đó)")
+    public RegisterResponse register(@Valid @RequestBody RegisterRequest request) {
         return authService.register(request);
     }
 
     @PostMapping("/login")
-    @Operation(summary = "Đăng nhập — cấp access & refresh token")
+    @Operation(summary = "Đăng nhập — cấp access token & refresh token")
     public TokenResponse login(@Valid @RequestBody LoginRequest request) {
         return authService.login(request);
     }

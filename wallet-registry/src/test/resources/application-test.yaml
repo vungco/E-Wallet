@@ -14,6 +14,9 @@ spring:
     enabled: false
 
 app:
+  grpc:
+    server:
+      enabled: false
   security:
     require-internal-key: false
   jwt:

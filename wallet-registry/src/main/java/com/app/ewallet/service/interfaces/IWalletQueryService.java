@@ -1,4 +1,4 @@
-package com.app.ewallet.service;
+package com.app.ewallet.service.interfaces;
 
 import com.app.ewallet.controller.dto.WalletResponse;
 

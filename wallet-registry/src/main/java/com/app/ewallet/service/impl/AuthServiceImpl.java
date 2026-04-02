@@ -4,6 +4,7 @@ import com.app.ewallet.config.properties.JwtProperties;
 import com.app.ewallet.controller.dto.LoginRequest;
 import com.app.ewallet.controller.dto.RefreshTokenRequest;
 import com.app.ewallet.controller.dto.RegisterRequest;
+import com.app.ewallet.controller.dto.RegisterResponse;
 import com.app.ewallet.controller.dto.TokenResponse;
 import com.app.ewallet.exception.EmailAlreadyExistsException;
 import com.app.ewallet.exception.InvalidCredentialsException;
@@ -17,7 +18,7 @@ import com.app.ewallet.repository.UserRepository;
 import com.app.ewallet.repository.WalletRepository;
 import com.app.ewallet.security.JwtService;
 import com.app.ewallet.security.TokenHasher;
-import com.app.ewallet.service.IAuthService;
+import com.app.ewallet.service.interfaces.IAuthService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -42,7 +43,7 @@ public class AuthServiceImpl implements IAuthService {
 
     @Override
     @Transactional
-    public TokenResponse register(RegisterRequest request) {
+    public RegisterResponse register(RegisterRequest request) {
         if (userRepository.existsByEmail(request.email())) {
             throw new EmailAlreadyExistsException(request.email());
         }
@@ -56,7 +57,12 @@ public class AuthServiceImpl implements IAuthService {
         wallet.setUser(user);
         walletRepository.save(wallet);
 
-        return issueTokens(user);
+        return new RegisterResponse(
+                user.getId(),
+                user.getEmail(),
+                user.getName(),
+                "Đăng ký thành công. Vui lòng đăng nhập để nhận access token và refresh token."
+        );
     }
 
     @Override

@@ -3,7 +3,7 @@ package com.app.ewallet.controller;
 import com.app.ewallet.config.OpenApiConfig;
 import com.app.ewallet.controller.dto.WalletResponse;
 import com.app.ewallet.security.UserPrincipal;
-import com.app.ewallet.service.IWalletQueryService;
+import com.app.ewallet.service.interfaces.IWalletQueryService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;

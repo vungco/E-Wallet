@@ -21,7 +21,7 @@ spring:
   jpa:
     open-in-view: false
     hibernate:
-      ddl-auto: validate
+      ddl-auto: update
     properties:
       hibernate:
         format_sql: true
@@ -50,6 +50,13 @@ springdoc:
     tags-sorter: alpha
 
 app:
+  grpc:
+    server:
+      enabled: ${GRPC_SERVER_ENABLED:true}
+      port: ${GRPC_PORT:9090}
+      # Postman / grpcurl list services; prod: GRPC_REFLECTION_ENABLED=false
+      reflection-enabled: ${GRPC_REFLECTION_ENABLED:false}
+      max-inbound-message-size-bytes: ${GRPC_MAX_INBOUND_MESSAGE_SIZE_BYTES:4194304}
   security:
     internal-api-key: ${INTERNAL_API_KEY:}
     require-internal-key: ${REQUIRE_INTERNAL_KEY:true}
@@ -71,6 +78,9 @@ spring:
 app:
   security:
     require-internal-key: false
+  grpc:
+    server:
+      reflection-enabled: true
 
 logging:
   level:

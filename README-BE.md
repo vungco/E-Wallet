@@ -1,235 +1,224 @@
-# Mini E-Wallet — Chiến lược Backend (BE)
+# Mini E-Wallet — Backend (BE)
 
-**Đã chốt:** kiến trúc **microservice** — **mỗi module (bounded context) = một Spring Boot service deploy riêng + một database MySQL riêng** (schema/logical DB độc lập; dev có thể dùng một instance MySQL chứa nhiều database).
+Tài liệu mô tả **bài toán**, **kiến trúc**, **phụ thuộc giữa service** và **việc cần làm từng service**.  
+**Công nghệ đã chốt:** **gRPC** (giao tiếp đồng bộ / lấy dữ liệu giữa service), **Kafka** (message, xếp hàng, giảm tốn tài nguyên khi chờ lock DB), **WebSocket** (`ws-gateway` — bắn real-time cho user biết kết quả / cập nhật liên quan số dư).
 
-Stack: **Java 17+**, **Spring Boot 3.x**, **MySQL 8**, **Kafka** (sự kiện sau khi nghiệp vụ tiền đã nhất quán trong từng service + outbox).
-
----
-
-## 1. Nguyên tắc kiến trúc
-
-| Nguyên tắc | Nội dung |
-|------------|----------|
-| **Một DB / một service** | Không chia sẻ bảng giữa service qua DB chung; chỉ giao tiếp qua **API**, **message**, hoặc **sự kiện**. |
-| **Số dư & ví** | **wallet-registry** là nơi duy nhất cập nhật `balance` (trong DB của nó). |
-| **Lệnh chuyển & lịch sử nghiệp vụ** | **transfer-service** giữ bản ghi giao dịch / trạng thái saga / idempotency trong DB của nó. |
-| **Không có transaction SQL xuyên DB** | Nhất quán liên service dùng **Saga (orchestration)** + **bù trừ (compensation)** + **idempotency key** trên mỗi bước gọi wallet. |
-| **Kafka** | Không thay thế DB; publish sau khi trạng thái local + **transactional outbox** (khuyến nghị) để không “mất event” hoặc publish khi chưa commit. |
-| **Gateway** | Client (FE) chỉ gọi **ewallet-gateway** (hoặc BFF); không gọi thẳng từng microservice ra production. |
+**Stack:** Java 17+, Spring Boot, MySQL 8, Kafka, gRPC (protobuf).
 
 ---
 
-## 2. Danh sách service và database (chốt)
+## 1. Bài toán đặt ra
 
-Mỗi dòng: **tên service** ↔ **tên database** ↔ **trách nhiệm**.
+| Nhu cầu | Thách thức |
+|---------|------------|
+| **Ví điện tử** | Mỗi user có ví; **số dư** phải **nhất quán**, không double-spend. |
+| **Chuyển tiền** | Thao tác gồm nhiều bước (trừ người gửi, cộng người nhận); cần **saga**, rollback khi lỗi. |
+| **Chịu tải** | Ghi **cùng một ví** trên DB dùng **lock dòng** (`SELECT … FOR UPDATE`). Nếu **quá nhiều request đồng thời** đổ thẳng vào DB, **thread và connection** chờ lock → **tốn tài nguyên** toàn hệ thống. |
+| **Trải nghiệm** | User không nên **chờ HTTP dài** trong lúc DB khóa ví; cần **chấp nhận lệnh nhanh** và **thông báo kết quả sau** (real-time). |
+| **Quan sát & hậu xử lý** | Ghi **audit**; có thể **notify** — không làm chậm path chuyển tiền. |
 
-| Service (container / artifact) | Database (MySQL) | Dữ liệu chính |
-|-------------------------------|------------------|---------------|
-| **`ewallet-gateway`** | *không* (stateless) | Chỉ routing, (sau) auth, rate limit. |
-| **`wallet-registry`** | **`wallet_db`** | `users`, `wallets` (`balance`, `version`), mapping user↔ví. |
-| **`transfer-service`** | **`transfer_db`** | Yêu cầu chuyển tiền, trạng thái saga, **idempotency** theo `requestId`, **outbox** Kafka, projection lịch sử đọc được từ phía transfer (hoặc query qua API). |
-| **`audit-worker`** | **`audit_db`** | Bản ghi audit **append-only** (nhận từ Kafka). |
-| **`notification-worker`** | **`notification_db`** *(tuỳ chọn)* | Log gửi notify đã xử lý / idempotency consumer để tránh gửi trùng. |
-
-**Ghi chú dev:** Trên Docker Compose có thể **một container MySQL** tạo sẵn nhiều `CREATE DATABASE wallet_db`, `transfer_db`, … — vẫn đúng tinh thần “một DB riêng / service”; production có thể tách instance.
+**Ý tưởng xử lý tải:** không “đập” hàng loạt ghi ví **đồng bộ từ edge**. Dùng **Kafka** làm **hàng đợi** trước worker; **partition key theo ví nguồn** (`fromWalletId`) để **tuần tự hóa** lệnh cùng ví, giảm tranh lock hỗn loạn. **Kết quả** đẩy qua **Kafka → ws-gateway → WebSocket** để user biết **đã xong / lỗi** (và có thể **GET lại số dư** sau khi thành công).
 
 ---
 
-## 3. API công khai vs nội bộ
+## 2. Giải pháp: microservice + nhiều database
 
-### 3.1. Qua gateway (FE / bên ngoài)
+**Nguyên tắc:** **một bounded context ≈ một Spring Boot service + một MySQL riêng** — **không join SQL xuyên service**.
 
-- `POST /api/v1/transfers` — body: `fromUserId`, `toUserId`, `amount`, `requestId` → **forward tới transfer-service**.
-- `GET /api/v1/wallets/...`, `GET /api/v1/transactions/...` — route tới **wallet-registry** hoặc **transfer-service** tùy contract (gateway map path).
+| Cách làm | Lý do |
+|----------|--------|
+| **Tách DB** | Giới hạn blast radius; mỗi team chủ một schema. |
+| **gRPC nội bộ** | Gọi **đồng bộ** rõ contract (protobuf): debit/credit ví, query cần thiết. **REST** chỉ **client ↔ `ewallet-gateway`**. |
+| **Kafka** | **Không** thay DB: tiền vẫn commit trong transaction. Kafka dùng để **xếp hàng lệnh chuyển**, **outbox** sau commit, **`transfer.result`** cho WebSocket. |
+| **202 + worker** | HTTP nhận lệnh, trả **ngay** `202` + `requestId`; worker **consumer** mới gọi **gRPC → wallet-registry** — tránh ôm connection từ phía user trong lúc chờ lock. |
 
-### 3.2. Nội bộ (chỉ mạng nội bộ / mTLS)
-
-**transfer-service** gọi **wallet-registry** để thực hiện từng bước tiền (mỗi bước **một transaction** trong `wallet_db`):
-
-- Ví dụ: `POST /internal/v1/wallets/{walletId}/debit` — kèm header **`Idempotency-Key`** (hoặc body key trùng với bước saga).
-- `POST /internal/v1/wallets/{walletId}/credit` — tương tự.
-
-Trong **wallet-registry**: với mỗi lệnh debit/credit: `SELECT … FOR UPDATE` đúng một ví + kiểm tra số dư (debit) + cập nhật `version`.
+**Nguồn sự thật số dư:** chỉ **`wallet-registry`** / `wallet_db`. Các service khác **không** sửa `balance` trực tiếp.
 
 ---
 
-## 4. Luồng chuyển tiền (Saga — orchestration)
+## 3. Tổng quan phụ thuộc giữa các service
 
-**Orchestrator:** **transfer-service**.
+```text
+                         ┌──────────────────────┐
+                         │   ewallet-gateway    │  ← REST/HTTPS (FE)
+                         └──────────┬───────────┘
+                                    │ gRPC
+                    ┌───────────────┴───────────────┐
+                    ▼                               ▼
+          ┌──────────────────┐            ┌──────────────────┐
+          │ wallet-registry  │◄── gRPC ───│ transfer-service │
+          │   (wallet_db)    │   (saga)   │  (transfer_db)   │
+          └──────────────────┘            └────────┬─────────┘
+                                                   │ produce
+                                                   ▼
+                                          ┌───────────────┐
+                                          │     Kafka     │
+                                          └───────┬───────┘
+                    ┌────────────────────────────┼────────────────────────────┐
+                    ▼                            ▼                            ▼
+           ┌──────────────┐            ┌──────────────┐              ┌──────────────┐
+           │  ws-gateway  │            │ audit-worker │              │ notification │
+           │ (WebSocket)  │            │ (audit_db)   │              │ (tuỳ chọn)   │
+           └──────────────┘            └──────────────┘              └──────────────┘
+```
 
-1. **Idempotency:** Nếu `requestId` đã có trong `transfer_db` với trạng thái terminal → trả lại kết quả cũ (không gọi wallet lần nữa).
-2. Ghi nhận yêu cầu `PENDING` trong `transfer_db`.
-3. **Debit** ví gửi qua API wallet (idempotent theo key bước 1).
-4. **Credit** ví nhận qua API wallet (idempotent theo key bước 2).
-5. Cập nhật trạng thái `SUCCESS`, ghi bản ghi lịch sử immutable trong `transfer_db`.
-6. **Outbox** trong cùng transaction local → publish Kafka (worker không sửa balance).
+| Ai gọi ai / đọc gì | Giao thức |
+|--------------------|-----------|
+| **FE → ewallet-gateway** | REST |
+| **ewallet-gateway → wallet-registry, transfer-service** | **gRPC** |
+| **transfer-service → wallet-registry** (saga debit/credit) | **gRPC** |
+| **transfer-service → Kafka** | Producer (command, outbox) |
+| **ws-gateway, audit-worker, … → Kafka** | Consumer |
+| **ws-gateway → FE** | **WebSocket** (push kết quả; user có thể refresh **GET số dư**) |
 
-**Lỗi / bù:**
-
-- Nếu debit thành công mà credit thất bại → **compensate**: credit lại ví gửi (hoặc debit ngược có kiểm soát) với idempotency tương ứng; ghi `FAILED` + lý do.
-
-**Thứ tự khóa:** Tránh deadlock khi nhiều giao dịch: quy ước luôn gọi debit/credit theo **thứ tự `walletId` tăng dần** khi cần chạm hai ví trong cùng saga (chi tiết implement trong transfer-service).
+**Ghi chú:** `ws-gateway` **không** gọi gRPC tới wallet để lấy số dư; nó **consume** message kết quả (ví dụ `transfer.result`) và **push**. Số dư đọc qua **REST** (`GET /wallets/...`) như thiết kế hiện tại.
 
 ---
 
-## 5. Kafka
+## 4. Tính năng / trách nhiệm từng service (để triển khai)
 
-| Topic (ví dụ) | Producer | Consumer |
-|---------------|----------|----------|
-| `wallet.transfer.completed` | **transfer-service** (sau commit + outbox) | **audit-worker**, **notification-worker** |
+### 4.1. `ewallet-gateway`
 
-Partition key: `walletId` hoặc `fromUserId` để tuần tự hoá theo ví khi cần.
-
-Consumer **không** cập nhật `balance` trong `wallet_db`.
+| Hạng mục | Nội dung |
+|----------|----------|
+| **Vai trò** | Cổng **duy nhất** phía public: **REST**. FE **không** gọi thẳng microservice nội bộ. |
+| **DB** | Không. |
+| **Làm gì** | Route: auth, ví, chuyển tiền → **gRPC** tới `wallet-registry` / `transfer-service` (map DTO ↔ protobuf). CORS, rate limit; (sau) bảo vệ JWT ở edge nếu cần. |
+| **Không làm** | Logic saga, không giữ WebSocket (thuộc `ws-gateway`). |
 
 ---
 
-## 6. Cấu trúc repo (gợi ý)
+### 4.2. `wallet-registry`
 
-**Monorepo** `ewallet-backend`:
+| Hạng mục | Nội dung |
+|----------|----------|
+| **Vai trò** | **Nguồn sự thật** user + ví + **balance**. |
+| **DB** | **`wallet_db`**. |
+| **Làm gì** | Đăng ký / đăng nhập / refresh / logout; **một user ↔ một ví** (tạo ví khi đăng ký). **GET ví** (JWT, chủ ví) qua gateway. **gRPC** `Debit` / `Credit` (metadata `idempotency-key`, `x-internal-api-key` khi bật): transaction ngắn, `SELECT … FOR UPDATE`, idempotency table. |
+| **Không làm** | Không publish Kafka; không gọi `transfer-service` trong transaction. |
+
+---
+
+### 4.3. `transfer-service`
+
+| Hạng mục | Nội dung |
+|----------|----------|
+| **Vai trò** | Điều phối **chuyển tiền**: nhận lệnh, **ghi `transfer_db`**, **Kafka** command, **consumer** chạy saga **gRPC** tới wallet, **outbox** event. |
+| **DB** | **`transfer_db`**. |
+| **Làm gì** | `POST /transfers` (qua gateway): validate, idempotency `requestId`, ghi **ACCEPTED**, **publish `transfer.command`** (partition key **`fromWalletId`**), trả **202**. Worker: consume → saga debit/credit (idempotency từng bước) → terminal state → **outbox** `wallet.transfer.completed`, **`transfer.result`**. |
+| **Không làm** | Không trở thành nguồn số dư; balance chỉ qua `wallet-registry`. |
+
+---
+
+### 4.4. `ws-gateway`
+
+| Hạng mục | Nội dung |
+|----------|----------|
+| **Vai trò** | **WebSocket** real-time: user biết **kết quả giao dịch** (và có thể kèm gợi ý refresh UI). |
+| **DB** | Không (tuỳ chọn **Redis** khi scale nhiều instance). |
+| **Làm gì** | Auth socket (JWT); map `userId` ↔ session; **consume Kafka `transfer.result`** → **push** `{ requestId, status, … }` tới client đã subscribe. |
+| **Không làm** | Không cập nhật balance; không thay cho **GET ví** để lấy số dư chính xác sau cùng. |
+
+---
+
+### 4.5. `audit-worker` / `notification-worker`
+
+| Service | DB | Việc làm |
+|---------|-----|----------|
+| **audit-worker** | `audit_db` | Consume `wallet.transfer.completed` — ghi **append-only**. |
+| **notification-worker** | tuỳ chọn | Email/push; idempotent theo `requestId` / `transactionId`. |
+
+**Không** sửa `balance`.
+
+---
+
+## 5. Luồng chuyển tiền (tóm tắt)
+
+```text
+FE  ──POST /transfers──► gateway ──gRPC──► transfer-service
+              │                              ├─ transfer_db: ACCEPTED
+              │                              └─ Kafka: transfer.command (key = fromWalletId)
+              ◄── 202 + requestId ───────────┘
+                                              ▼
+                                    consumer: gRPC debit/credit → wallet-registry
+                                              ├─ outbox: completed + transfer.result
+                                              └─ ...
+FE  ◄── WebSocket ─── ws-gateway ◄── Kafka: transfer.result
+```
+
+- User **chờ** trên UI sau `202`; **kết quả** tới qua **WS** (hoặc poll API nếu WS lỗi).
+
+---
+
+## 6. Kafka — topic gợi ý
+
+| Topic | Việc | Producer | Consumer |
+|-------|------|----------|----------|
+| **`transfer.command`** | Hàng đợi lệnh sau **202** | transfer-service | worker saga |
+| **`wallet.transfer.completed`** | Sau commit thành công (audit, notify) | transfer-service (outbox) | audit-worker, notification-worker |
+| **`transfer.result`** | `userId`, `requestId`, `status` — cho **push UI** | transfer-service (outbox) | **ws-gateway** |
+
+**Partition:** `transfer.command` dùng **`fromWalletId`** để **tuần tự** lệnh cùng ví nguồn. `transfer.result` có thể partition theo **`userId`** cho consumer `ws-gateway`.
+
+**Nhắc lại:** Kafka **không** ghi balance; chỉ **sự kiện / hàng đợi**.
+
+---
+
+## 7. API phía client (qua gateway)
+
+- **`POST /api/v1/transfers`** → **202** + `{ requestId, status: "ACCEPTED" }`.
+- **`GET /api/v1/transactions/...`** — poll trạng thái (dự phòng).
+- **`GET /api/v1/wallets/{id}`** — đọc số dư (sau khi có kết quả, user có thể gọi lại).
+
+---
+
+## 8. Cấu trúc repo (gợi ý)
 
 ```
 ewallet-backend/
-├── ewallet-gateway/           # Spring Cloud Gateway hoặc Spring MVC proxy
-├── wallet-registry/           # + Flyway cho wallet_db
-├── transfer-service/          # + Flyway cho transfer_db
+├── proto/                    # .proto dùng chung (gRPC)
+├── ewallet-gateway/
+├── ws-gateway/
+├── wallet-registry/
+├── transfer-service/
 ├── audit-worker/
 ├── notification-worker/
-└── docker-compose.yml         # gateway + 5 service + kafka + mysql (multi-db)
+└── docker-compose.yml        # MySQL (nhiều DB), Kafka, (tuỳ chọn) Redis
 ```
 
-Mỗi thư mục con (trừ `docker-compose.yml`) là **một project build độc lập** (một JAR / một image). **OpenAPI / tài liệu API** (nếu cần) đặt **trong từng service** (`src/main/resources/static/openapi.yaml` hoặc tương đương) — **không** bắt buộc thêm folder hợp đồng riêng.
+---
+
+## 9. Lộ trình triển khai (G0 → G6)
+
+| Giai đoạn | Việc làm |
+|-----------|----------|
+| **G0** | Docker: MySQL (multi-DB), Kafka, mạng nội bộ. |
+| **G1** | **wallet-registry**: gRPC debit/credit + idempotency + auth/GET ví. |
+| **G2** | **transfer-service**: **202** + `transfer.command` + consumer saga **gRPC** wallet. |
+| **G3** | **ewallet-gateway**: REST → **gRPC**. |
+| **G4** | Outbox + `wallet.transfer.completed` + `transfer.result`. |
+| **G5** | **ws-gateway**: WebSocket + consume `transfer.result`. |
+| **G6** | **audit-worker**, **notification-worker**. |
+
+**Nối gRPC giữa service:** chuẩn bị `proto/`, codegen, DNS nội bộ (`wallet-registry:50051`, …); map lỗi gRPC → HTTP cho FE; (tuỳ chọn) TLS nội bộ, tắt REST internal trên prod.
 
 ---
 
-## 7. Bản tóm tắt giai đoạn (G0 → G5)
+## 10. Kiểm thử & checklist
 
-| Giai đoạn | Việc làm | Tiêu chí xác thực |
-|-----------|----------|-------------------|
-| **G0** | Docker Compose: MySQL (nhiều DB), Kafka, network nội bộ. | `docker compose up` đủ dependency. |
-| **G1** | **wallet-registry** + `wallet_db`. | Debit/credit an toàn + idempotency. |
-| **G2** | **transfer-service** + `transfer_db` + saga gọi wallet. | Chuyển tiền đúng; `requestId` trùng an toàn; compensate. |
-| **G3** | **ewallet-gateway** route tới các service. | Chỉ gọi qua gateway. |
-| **G4** | Outbox + Kafka trong **transfer-service**. | Event sau commit; không publish khi rollback. |
-| **G5** | **audit-worker**, **notification-worker**. | Consumer không sửa balance. |
+**Kiểm thử:** idempotency (`requestId` + từng bước saga); saga lỗi → `transfer.result` **FAILED**; gRPC + WS; tải trước/sau khi có Kafka.
 
-**Thứ tự phụ thuộc:** `G0` → **`wallet-registry`** (G1) → **`transfer-service`** (G2) → **`ewallet-gateway`** (G3) → bổ sung **outbox/Kafka** trên transfer (G4) → **workers** (G5).
+**Checklist:**
 
-Chi tiết từng bước: **mục 8**.
-
----
-
-## 8. Chiến lược thực thi step-by-step theo từng service
-
-### 8.0. G0 — Hạ tầng chung (không nghiệp vụ)
-
-1. Tạo `docker-compose.yml`: **MySQL** (một instance, nhiều `CREATE DATABASE`: `wallet_db`, `transfer_db`, `audit_db`, `notification_db`).
-2. Thêm **Kafka** (KRaft hoặc Zookeeper tùy image team chọn); expose port dev.
-3. Định nghĩa **mạng Docker** chung để các service gọi nhau bằng **tên container** (ví dụ `http://wallet-registry:8081`).
-4. (Tuỳ chọn) file `.env` chung: port public gateway, JDBC URL từng service.
-5. **Xác thực:** `docker compose up`, kết nối được MySQL từ máy host; Kafka có topic tạo thử được.
-
----
-
-### 8.1. `wallet-registry` (làm trước — transfer phụ thuộc)
-
-| Bước | Việc làm cụ thể |
-|------|-----------------|
-| 1 | Khởi tạo Spring Boot project, datasource **chỉ** `wallet_db`, **Flyway/Liquibase** migration. |
-| 2 | Tạo bảng tối thiểu: `users`, `wallets` (`user_id`, `balance`, `version`). Seed data dev (vài user + ví + số dư ban đầu). |
-| 3 | API **đọc** công khai hoặc nội bộ: `GET` ví theo `userId` / `walletId` (phục vụ sau này gateway/FE). |
-| 4 | API **internal** `POST .../debit` và `POST .../credit` (hoặc một resource thống nhất): trong **một** `@Transactional`, `SELECT … FOR UPDATE` đúng một `wallet_id`, kiểm tra số dư (debit), cập nhật `balance` và `version`. |
-| 5 | **Idempotency:** bảng `wallet_idempotency` (hoặc tương đương) lưu `(idempotency_key, bước, kết quả)` trong `wallet_db`; cùng key → trả cùng kết quả, không cộng/trừ lại. |
-| 6 | **Health** Actuator `/actuator/health`; cấu hình port (ví dụ 8081). |
-| 7 | **Test:** JUnit + Testcontainers MySQL — đồng thời nhiều request debit cùng ví; gọi trùng `Idempotency-Key` không trừ hai lần. |
-
-**Dừng lại khi:** có thể gọi HTTP từ Postman (hoặc từ integration test) debit/credit đúng và an toàn.
-
----
-
-### 8.2. `transfer-service` (sau wallet — orchestrator Saga)
-
-| Bước | Việc làm cụ thể |
-|------|-----------------|
-| 1 | Spring Boot + datasource **chỉ** `transfer_db` + migration. |
-| 2 | Bảng: yêu cầu chuyển (`request_id` UNIQUE), trạng thái (`PENDING` / `SUCCESS` / `FAILED`), `from_user_id`, `to_user_id`, `amount`, thời gian; (tuỳ chọn) bảng `saga_step` để debug. |
-| 3 | Cấu hình **HTTP client** (RestClient/WebClient) tới URL **wallet-registry** (biến môi trường `WALLET_REGISTRY_BASE_URL`). |
-| 4 | Map `userId` → `walletId`: gọi API wallet đã có ở 8.1 (hoặc embed id ví trong bảng transfer nếu FE gửi `walletId`). |
-| 5 | **Luồng saga:** (a) kiểm tra `requestId` trong `transfer_db` → idempotent; (b) ghi `PENDING`; (c) resolve hai `walletId`; (d) **debit** sender với idempotency key dạng `{requestId}-debit`; (e) **credit** receiver `{requestId}-credit`; (f) nếu lỗi sau debit → **compensate** (credit lại sender cùng key bù); (g) cập nhật `SUCCESS` / `FAILED`. |
-| 6 | API **public:** `POST /api/v1/transfers`, `GET /api/v1/transactions` (hoặc tương đương) — port riêng (ví dụ 8082). |
-| 7 | **Test:** integration gọi wallet thật (Testcontainers cả hai DB hoặc mock wallet); case trùng `requestId`; case credit fail → balance khôi phục. |
-
-**Giai đoạn này chưa cần Kafka** — chỉ cần chuyển tiền đúng end-to-end khi gọi thẳng `transfer-service` (hoặc sau gateway ở 8.3).
-
----
-
-### 8.3. `ewallet-gateway`
-
-| Bước | Việc làm cụ thể |
-|------|-----------------|
-| 1 | Spring Cloud Gateway (YAML/Java config) **hoặc** Spring MVC + `RestTemplate`/`RestClient` reverse proxy đơn giản. |
-| 2 | Route ví dụ: `/api/v1/transfers/**` → `transfer-service`; `/api/v1/wallets/**` → `wallet-registry`; `/api/v1/transactions/**` → `transfer-service` (theo contract). |
-| 3 | **StripPrefix** / giữ nguyên path tùy cách các service expose (thống nhất một kiểu). |
-| 4 | Port public duy nhất (ví dụ 8080); các service backend chỉ bind mạng nội bộ. |
-| 5 | **Xác thực:** toàn bộ luồng Postman/FE chỉ gọi `localhost:8080`. |
-
----
-
-### 8.4. `transfer-service` — bổ sung G4: Outbox + Kafka
-
-| Bước | Việc làm cụ thể |
-|------|-----------------|
-| 1 | Bảng `outbox` trong **cùng** `transfer_db`: `id`, `payload`, `topic`, `created_at`, `published_at` (null = chưa gửi). |
-| 2 | Trong transaction khi chuyển sang `SUCCESS`: insert một dòng outbox (cùng commit với bản ghi giao dịch). |
-| 3 | **Publisher** (scheduled hoặc `@TransactionalEventListener`): đọc outbox chưa publish → gửi Kafka → đánh dấu `published_at` (hoặc xóa sau khi ack tùy chiến lược). |
-| 4 | Tạo topic **`wallet.transfer.completed`**, định nghĩa JSON payload cố định (document trong code hoặc README service). |
-| 5 | **Xác thực:** rollback giao dịch → không có message; thành công → có đúng một event (hoặc semantics at-least-once + consumer idempotent). |
-
----
-
-### 8.5. `audit-worker`
-
-| Bước | Việc làm cụ thể |
-|------|-----------------|
-| 1 | Spring Boot + `@KafkaListener` topic `wallet.transfer.completed`. |
-| 2 | Datasource **`audit_db`**; bảng append-only (ví dụ `audit_events`: `id`, `payload`, `received_at`, `transaction_id`). |
-| 3 | Ghi **insert** một dòng mỗi message; không UPDATE balance. |
-| 4 | **Xác thực:** sau một transfer thành công, có dòng trong `audit_db`; consumer restart vẫn an toàn nếu dùng idempotency `transaction_id` (unique). |
-
----
-
-### 8.6. `notification-worker`
-
-| Bước | Việc làm cụ thể |
-|------|-----------------|
-| 1 | `@KafkaListener` cùng topic (hoặc topic riêng sau này). |
-| 2 | Logic “gửi thông báo” (log console / stub email trong dev). |
-| 3 | (Tuỳ chọn) **`notification_db`**: bảng `processed_events` (`event_id` UNIQUE) để không xử lý trùng khi Kafka at-least-once. |
-| 4 | **Xác thực:** không gọi wallet; không đổi `balance`. |
-
----
-
-## 9. Kiểm thử bắt buộc (toàn hệ thống)
-
-- **Concurrency** trên cùng ví (qua wallet internal API và qua saga).
-- **Duplicate `requestId`** ở transfer.
-- **Saga:** mô phỏng lỗi giữa debit và credit → số dư khôi phục đúng sau compensate.
-- **Edge:** chuyển cho chính mình, `amount <= 0` — từ chối rõ ràng.
-
----
-
-## 10. Checklist chốt kiến trúc (self-review)
-
-- [ ] Mỗi service (trừ gateway) có **đúng một database** tên riêng, migration riêng.
-- [ ] **wallet-registry** là chỗ duy nhất đổi `balance`.
-- [ ] **transfer-service** không join SQL sang `wallet_db`; chỉ gọi HTTP (hoặc gRPC sau này).
-- [ ] Có **Saga + idempotency** cho từng bước debit/credit.
-- [ ] Kafka chỉ sau **commit** local + **outbox** (hoặc tương đương an toàn).
-- [ ] FE chỉ vào **gateway** (khi G3 xong).
+- [ ] Chuyển tiền: **202**, không chờ hết saga trên HTTP.
+- [ ] Lệnh qua **Kafka** trước khi worker chạm DB ví.
+- [ ] **`transfer.result`** → **ws-gateway** push.
+- [ ] **wallet-registry** là nguồn balance; Kafka không ghi balance.
+- [ ] **gRPC** nội bộ; **Kafka** message/outbox; **WebSocket** real-time cho user.
 
 ---
 
 ## 11. Liên kết
 
-- Tổng quan: [README.md](./README.md)  
-- Frontend: [README-FE.md](./README-FE.md) — `NUXT_PUBLIC_API_BASE` trỏ **gateway**.
+- Tổng quan: [README.md](./README.md)
+- Frontend: [README-FE.md](./README-FE.md)

@@ -1,0 +1,5 @@
+# Local environment / secrets — không đưa lên git
+.env
+.env.*
+!.env.example
+!.env.sample

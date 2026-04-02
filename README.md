@@ -1,16 +1,16 @@
 # Mini E-Wallet — Tổng quan dự án
 
-Hệ thống ví điện tử: **đúng số dư** nhờ **khóa + idempotency + Saga**; backend **đã chốt microservice** — **mỗi service một database riêng**, Kafka cho audit/notify sau commit (outbox).
+Hệ thống ví điện tử: **đúng số dư** (DB + khóa + idempotency + saga); **chuyển tiền async** qua **Kafka** (HTTP **202**, không chờ lock dài); **WebSocket `ws-gateway`** đẩy kết quả về client (giảm chờ, tăng chịu tải).
 
-Chiến lược triển khai và tiêu chí xác thực được tách thành **hai tài liệu**:
+Chiến lược triển khai và tiêu chí xác thực:
 
 | Tài liệu | Nội dung |
 |----------|----------|
-| [**README-BE.md**](./README-BE.md) | Backend: **microservice** (gateway, wallet-registry, transfer-service, workers), **mỗi service một DB**, lộ trình G0–G5. |
-| [**README-FE.md**](./README-FE.md) | Frontend Nuxt 3: gọi API qua **gateway**, cấu trúc, checklist xác thực. |
+| [**README-BE.md**](./README-BE.md) | Microservice, **Kafka**, **`ws-gateway`**, `ewallet-gateway`, wallet-registry, transfer-service, workers. |
+| [**README-FE.md**](./README-FE.md) | Nuxt: REST qua gateway + **WebSocket** tới `ws-gateway`. |
 
-**Gợi ý tên repo:** `ewallet-backend` (BE), `ewallet-frontend` (FE).
+**Gợi ý tên repo:** `ewallet-backend`, `ewallet-frontend`.
 
 ---
 
-*Đọc README-BE và README-FE trước khi bắt đầu code để thống nhất ranh giới service/DB và thứ tự triển khai.*
+*Đọc README-BE và README-FE trước khi code để thống nhất luồng async + WS.*
