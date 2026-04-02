@@ -1,0 +1,59 @@
+# Mini E-Wallet — MySQL + Kafka (dev)
+# Chạy: docker compose up -d
+# Dừng: docker compose down
+#
+# Ứng dụng trên host dùng:
+#   DB_HOST=localhost DB_PORT=3306 DB_USERNAME=root DB_PASSWORD=example
+#   KAFKA_BOOTSTRAP_SERVERS=localhost:9092
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: ewallet-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: example
+    ports:
+      - "3306:3306"
+    volumes:
+      - ewallet-mysql-data:/var/lib/mysql
+      - ./docker/mysql/init-multiple-dbs.sql:/docker-entrypoint-initdb.d/01-init-multiple-dbs.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-pexample"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Confluent images — tag ổn định trên Docker Hub (Bitnami tag ngắn 3.9/3.7 dễ "not found")
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.1
+    container_name: ewallet-zookeeper
+    restart: unless-stopped
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: ewallet-kafka
+    restart: unless-stopped
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+
+volumes:
+  ewallet-mysql-data:

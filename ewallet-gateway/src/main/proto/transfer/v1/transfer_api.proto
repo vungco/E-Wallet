@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package transfer.v1;
+
+option java_multiple_files = true;
+option java_package = "com.app.ewallet.grpc.transfer.v1";
+option java_outer_classname = "TransferApiProto";
+
+// API cho ewallet-gateway (và tool nội bộ). Metadata: authorization = "Bearer <JWT>"
+service TransferService {
+  rpc CreateTransfer (CreateTransferRequest) returns (CreateTransferResponse);
+  rpc GetTransferStatus (GetTransferStatusRequest) returns (GetTransferStatusResponse);
+}
+
+message CreateTransferRequest {
+  string request_id = 1;
+  int64 from_wallet_id = 2;
+  int64 to_wallet_id = 3;
+  int64 to_user_id = 4;
+  // Chuỗi decimal, ví dụ "10.5000"
+  string amount = 5;
+}
+
+message CreateTransferResponse {
+  string request_id = 1;
+  string status = 2;
+}
+
+message GetTransferStatusRequest {
+  string request_id = 1;
+}
+
+message GetTransferStatusResponse {
+  string request_id = 1;
+  string status = 2;
+  int64 from_wallet_id = 3;
+  int64 to_wallet_id = 4;
+  string amount = 5;
+  string error_message = 6;
+}

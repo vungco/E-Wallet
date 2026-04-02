@@ -1,3 +1,19 @@
 spring:
   application:
     name: ewallet-gateway
+
+server:
+  port: ${SERVER_PORT:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+# transfer-service gRPC (TransferService) — mặc định 9093
+app:
+  transfer:
+    grpc:
+      host: ${TRANSFER_GRPC_HOST:localhost}
+      port: ${TRANSFER_GRPC_PORT:9093}
