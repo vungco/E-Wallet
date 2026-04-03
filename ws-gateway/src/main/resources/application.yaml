@@ -1,0 +1,36 @@
+spring:
+  application:
+    name: ws-gateway
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: ${KAFKA_CONSUMER_GROUP:ws-gateway}
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest
+
+server:
+  port: ${SERVER_PORT:8083}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+# Trùng JWT_SECRET / JWT_ISSUER với wallet-registry (cùng HS256 verify token handshake WS)
+app:
+  jwt:
+    secret: ${JWT_SECRET:dev-only-change-me-use-openssl-rand-hex-32-minimum}
+    issuer: ${JWT_ISSUER:wallet-registry}
+    access-token-expiration-minutes: ${JWT_ACCESS_MINUTES:15}
+    refresh-token-expiration-days: ${JWT_REFRESH_DAYS:30}
+  kafka:
+    topics:
+      transfer-result: ${KAFKA_TOPIC_TRANSFER_RESULT:transfer.result}
+  ws:
+    cors:
+      allowed-origins: ${WS_CORS_ALLOWED_ORIGINS:}
