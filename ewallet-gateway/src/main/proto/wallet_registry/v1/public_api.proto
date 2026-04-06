@@ -1,0 +1,85 @@
+syntax = "proto3";
+
+package wallet.registry.v1;
+
+import "google/protobuf/empty.proto";
+
+option java_multiple_files = true;
+option java_package = "com.app.ewallet.grpc.registry.v1";
+option java_outer_classname = "RegistryPublicApiProto";
+
+// Gọi từ ewallet-gateway (metadata: x-internal-api-key khi REQUIRE_INTERNAL_KEY=true).
+// User: metadata authorization = "Bearer <access_token>" (Register/Login không cần).
+// GetWallet / Deposit / Withdraw: ví suy ra từ user trong JWT (mỗi user một ví).
+// Saga nội bộ (transfer-service): DebitWallet / CreditWallet + metadata idempotency-key (theo wallet_id).
+service WalletRegistryPublic {
+  rpc Register (RegisterUserRequest) returns (RegisterUserResponse);
+  rpc Login (LoginUserRequest) returns (TokenPayload);
+  rpc Refresh (RefreshTokenMsg) returns (TokenPayload);
+  rpc Logout (RefreshTokenMsg) returns (google.protobuf.Empty);
+  rpc LogoutAll (google.protobuf.Empty) returns (google.protobuf.Empty);
+  rpc GetWallet (google.protobuf.Empty) returns (WalletSnapshot);
+  rpc Deposit (UserFundRequest) returns (WalletOperationResult);
+  rpc Withdraw (UserFundRequest) returns (WalletOperationResult);
+  rpc DebitWallet (DebitWalletRequest) returns (WalletOperationResult);
+  rpc CreditWallet (CreditWalletRequest) returns (WalletOperationResult);
+}
+
+message RegisterUserRequest {
+  string name = 1;
+  string email = 2;
+  string password = 3;
+}
+
+message RegisterUserResponse {
+  int64 user_id = 1;
+  string email = 2;
+  string name = 3;
+  string message = 4;
+}
+
+message LoginUserRequest {
+  string email = 1;
+  string password = 2;
+}
+
+message RefreshTokenMsg {
+  string refresh_token = 1;
+}
+
+message TokenPayload {
+  string access_token = 1;
+  string refresh_token = 2;
+  string token_type = 3;
+  int64 expires_in = 4;
+}
+
+message WalletSnapshot {
+  int64 wallet_id = 1;
+  int64 user_id = 2;
+  string user_name = 3;
+  string balance = 4;
+  int64 version = 5;
+}
+
+message UserFundRequest {
+  string amount = 1;
+  string idempotency_key = 2;
+}
+
+message WalletOperationResult {
+  int64 wallet_id = 1;
+  string balance_after = 2;
+  int64 version = 3;
+  bool replayed = 4;
+}
+
+message DebitWalletRequest {
+  int64 wallet_id = 1;
+  string amount = 2;
+}
+
+message CreditWalletRequest {
+  int64 wallet_id = 1;
+  string amount = 2;
+}

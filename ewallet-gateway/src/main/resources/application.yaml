@@ -11,9 +11,27 @@ management:
       exposure:
         include: health,info
 
-# transfer-service gRPC (TransferService) — mặc định 9093
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+
+# transfer-service gRPC (TransferService)
+# wallet-registry gRPC (WalletRegistryPublic + ledger nội bộ transfer-service)
 app:
   transfer:
     grpc:
       host: ${TRANSFER_GRPC_HOST:localhost}
       port: ${TRANSFER_GRPC_PORT:9093}
+  wallet-registry:
+    host: ${WALLET_GRPC_HOST:localhost}
+    port: ${WALLET_GRPC_PORT:9090}
+    internal-api-key: ${WALLET_INTERNAL_API_KEY:}
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://127.0.0.1:3000}
+  jwt:
+    secret: ${JWT_SECRET:dev-only-change-me-use-openssl-rand-hex-32-minimum}
+    issuer: ${JWT_ISSUER:wallet-registry}

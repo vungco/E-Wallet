@@ -1,7 +1,7 @@
 package com.app.ewallet.service.impl;
 
+import com.app.ewallet.client.WalletRegistryPublicGrpcClient;
 import com.app.ewallet.client.dto.WalletRegistryWalletDto;
-import com.app.ewallet.client.WalletRegistryRestClient;
 import com.app.ewallet.config.properties.KafkaTopicsProperties;
 import com.app.ewallet.api.dto.AcceptedTransferResponse;
 import com.app.ewallet.api.dto.CreateTransferRequest;
@@ -31,7 +31,7 @@ import java.math.RoundingMode;
 public class TransferServiceImpl implements ITransferService {
 
     private final TransferRepository transferRepository;
-    private final WalletRegistryRestClient walletRegistryRestClient;
+    private final WalletRegistryPublicGrpcClient walletRegistryPublicGrpcClient;
     private final KafkaTemplate<String, String> kafkaTemplate;
     private final ObjectMapper objectMapper;
     private final KafkaTopicsProperties kafkaTopicsProperties;
@@ -46,8 +46,10 @@ public class TransferServiceImpl implements ITransferService {
             throw new InvalidTransferException("fromWalletId and toWalletId must differ");
         }
 
-        WalletRegistryWalletDto fromWallet = walletRegistryRestClient.getWallet(accessToken, request.fromWalletId());
-        if (fromWallet == null || !fromWallet.userId().equals(authenticatedUserId)) {
+        WalletRegistryWalletDto myWallet = walletRegistryPublicGrpcClient.getMyWallet(accessToken);
+        if (myWallet == null
+                || !myWallet.walletId().equals(request.fromWalletId())
+                || !myWallet.userId().equals(authenticatedUserId)) {
             throw new InvalidTransferException("fromWalletId does not belong to the authenticated user");
         }
 

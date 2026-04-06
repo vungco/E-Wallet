@@ -24,8 +24,8 @@ import java.util.concurrent.TimeUnit;
 public class GrpcServerLifecycle implements SmartLifecycle {
 
     private final GrpcServerProperties grpcServerProperties;
-    private final WalletLedgerGrpcService walletLedgerGrpcService;
-    private final InternalGrpcInterceptor internalGrpcInterceptor;
+    private final WalletRegistryPublicGrpcService walletRegistryPublicGrpcService;
+    private final GatewayRegistryGrpcInterceptor gatewayRegistryGrpcInterceptor;
 
     private Server server;
     private volatile boolean running;
@@ -38,7 +38,7 @@ public class GrpcServerLifecycle implements SmartLifecycle {
         try {
             ServerBuilder<?> builder = ServerBuilder.forPort(grpcServerProperties.port())
                     .maxInboundMessageSize(grpcServerProperties.maxInboundMessageSizeBytes())
-                    .addService(ServerInterceptors.intercept(walletLedgerGrpcService, internalGrpcInterceptor));
+                    .addService(ServerInterceptors.intercept(walletRegistryPublicGrpcService, gatewayRegistryGrpcInterceptor));
             if (grpcServerProperties.reflectionEnabled()) {
                 builder.addService(ProtoReflectionService.newInstance());
                 log.info("gRPC server reflection enabled (disable in production if unused)");

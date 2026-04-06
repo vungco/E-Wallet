@@ -11,7 +11,7 @@ import org.springframework.test.context.ActiveProfiles;
 @ActiveProfiles("test")
 @EmbeddedKafka(
         partitions = 1,
-        topics = {"transfer.command", "wallet.transfer.completed", "transfer.result"},
+        topics = {"transfer.command", "wallet.transfer.completed"},
         bootstrapServersProperty = "spring.kafka.bootstrap-servers"
 )
 class TransferServiceApplicationTests {

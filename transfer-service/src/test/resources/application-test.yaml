@@ -1,4 +1,8 @@
 spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisReactiveAutoConfiguration
   datasource:
     url: jdbc:h2:mem:transfer_test;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1
     driver-class-name: org.h2.Driver
@@ -17,8 +21,6 @@ spring:
       auto-offset-reset: earliest
 
 app:
-  wallet-registry:
-    base-url: http://localhost:0
   grpc:
     server:
       enabled: false

@@ -4,5 +4,6 @@ import com.app.ewallet.controller.dto.WalletResponse;
 
 public interface IWalletQueryService {
 
-    WalletResponse getWalletForUser(Long walletId, Long authenticatedUserId);
+    /** Mỗi user một ví (unique user_id trên bảng wallet). */
+    WalletResponse getWalletByUserId(Long userId);
 }

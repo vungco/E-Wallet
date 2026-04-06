@@ -61,7 +61,7 @@ public class AuthServiceImpl implements IAuthService {
                 user.getId(),
                 user.getEmail(),
                 user.getName(),
-                "Đăng ký thành công. Vui lòng đăng nhập để nhận access token và refresh token."
+                "Đăng ký thành công. Vui lòng đăng nhập qua gateway để nhận access token và refresh token."
         );
     }
 

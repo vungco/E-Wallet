@@ -4,13 +4,12 @@ spring:
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:dev}
 
-  kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
-    consumer:
-      group-id: ${KAFKA_CONSUMER_GROUP:ws-gateway}
-      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      auto-offset-reset: earliest
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: ${REDIS_COMMAND_TIMEOUT:2s}
 
 server:
   port: ${SERVER_PORT:8083}
@@ -28,9 +27,9 @@ app:
     issuer: ${JWT_ISSUER:wallet-registry}
     access-token-expiration-minutes: ${JWT_ACCESS_MINUTES:15}
     refresh-token-expiration-days: ${JWT_REFRESH_DAYS:30}
-  kafka:
-    topics:
-      transfer-result: ${KAFKA_TOPIC_TRANSFER_RESULT:transfer.result}
+  redis:
+    pubsub:
+      transfer-result-channel: ${REDIS_TRANSFER_RESULT_CHANNEL:ewallet:transfer:result}
   ws:
     cors:
       allowed-origins: ${WS_CORS_ALLOWED_ORIGINS:}

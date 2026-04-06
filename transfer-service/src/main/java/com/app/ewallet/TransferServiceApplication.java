@@ -3,8 +3,8 @@ package com.app.ewallet;
 import com.app.ewallet.config.properties.GrpcServerProperties;
 import com.app.ewallet.config.properties.JwtProperties;
 import com.app.ewallet.config.properties.KafkaTopicsProperties;
+import com.app.ewallet.config.properties.RedisPubSubProperties;
 import com.app.ewallet.config.properties.WalletGrpcProperties;
-import com.app.ewallet.config.properties.WalletRegistryRestProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -17,9 +17,9 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EnableConfigurationProperties({
         JwtProperties.class,
         GrpcServerProperties.class,
-        WalletRegistryRestProperties.class,
         WalletGrpcProperties.class,
-        KafkaTopicsProperties.class
+        KafkaTopicsProperties.class,
+        RedisPubSubProperties.class
 })
 public class TransferServiceApplication {
 

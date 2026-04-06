@@ -6,8 +6,16 @@
 #   DB_HOST=localhost DB_PORT=3306 DB_USERNAME=root DB_PASSWORD=example
 #   DB: wallet_db, transfer_db, audit_db (xem docker/mysql/init-multiple-dbs.sql)
 #   KAFKA_BOOTSTRAP_SERVERS=localhost:9092
+#   REDIS_HOST=localhost REDIS_PORT=6379  (Pub/Sub real-time transfer.result → ws-gateway)
 
 services:
+  redis:
+    image: redis:7-alpine
+    container_name: ewallet-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
   mysql:
     image: mysql:8.0
     container_name: ewallet-mysql

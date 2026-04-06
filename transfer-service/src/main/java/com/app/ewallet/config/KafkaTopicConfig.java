@@ -20,9 +20,4 @@ public class KafkaTopicConfig {
     NewTopic walletTransferCompletedTopic(KafkaTopicsProperties topics) {
         return TopicBuilder.name(topics.walletTransferCompleted()).partitions(3).replicas(1).build();
     }
-
-    @Bean
-    NewTopic transferResultTopic(KafkaTopicsProperties topics) {
-        return TopicBuilder.name(topics.transferResult()).partitions(6).replicas(1).build();
-    }
 }

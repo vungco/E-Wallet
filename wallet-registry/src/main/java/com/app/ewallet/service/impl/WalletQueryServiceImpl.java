@@ -1,7 +1,6 @@
 package com.app.ewallet.service.impl;
 
 import com.app.ewallet.controller.dto.WalletResponse;
-import com.app.ewallet.exception.WalletAccessDeniedException;
 import com.app.ewallet.exception.WalletNotFoundException;
 import com.app.ewallet.model.Wallet;
 import com.app.ewallet.repository.WalletRepository;
@@ -18,12 +17,9 @@ public class WalletQueryServiceImpl implements IWalletQueryService {
 
     @Override
     @Transactional(readOnly = true)
-    public WalletResponse getWalletForUser(Long walletId, Long authenticatedUserId) {
-        Wallet wallet = walletRepository.findByIdWithUser(walletId)
-                .orElseThrow(() -> new WalletNotFoundException(walletId));
-        if (!wallet.getUser().getId().equals(authenticatedUserId)) {
-            throw new WalletAccessDeniedException();
-        }
+    public WalletResponse getWalletByUserId(Long userId) {
+        Wallet wallet = walletRepository.findByUser_Id(userId)
+                .orElseThrow(() -> new WalletNotFoundException("Wallet not found for user: " + userId));
         return new WalletResponse(
                 wallet.getId(),
                 wallet.getUser().getId(),

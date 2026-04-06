@@ -8,6 +8,7 @@ import com.app.ewallet.kafka.dto.WalletTransferCompletedPayload;
 import com.app.ewallet.model.EventOutbox;
 import com.app.ewallet.model.Transfer;
 import com.app.ewallet.model.TransferStatus;
+import com.app.ewallet.redis.TransferResultRealtimePublisher;
 import com.app.ewallet.repository.EventOutboxRepository;
 import com.app.ewallet.repository.TransferRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -17,6 +18,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -34,6 +37,7 @@ public class TransferCommandProcessor {
     private final WalletLedgerGrpcClient walletLedgerGrpcClient;
     private final ObjectMapper objectMapper;
     private final KafkaTopicsProperties kafkaTopicsProperties;
+    private final TransferResultRealtimePublisher transferResultRealtimePublisher;
 
     @Transactional
     public void process(TransferCommandPayload payload) {
@@ -117,38 +121,29 @@ public class TransferCommandProcessor {
                     transfer.getToUserId(),
                     occurredAt
             );
-            List<EventOutbox> rows = new ArrayList<>();
-            rows.add(outboxRow(
+            EventOutbox completedRow = outboxRow(
                     transfer,
                     kafkaTopicsProperties.walletTransferCompleted(),
                     String.valueOf(transfer.getFromUserId()),
                     objectMapper.writeValueAsString(completed)
+            );
+            eventOutboxRepository.save(completedRow);
+
+            String fromJson = objectMapper.writeValueAsString(new TransferResultPayload(
+                    transfer.getFromUserId(),
+                    transfer.getRequestId(),
+                    "SUCCESS",
+                    transfer.getId(),
+                    null
             ));
-            rows.add(outboxRow(
-                    transfer,
-                    kafkaTopicsProperties.transferResult(),
-                    String.valueOf(transfer.getFromUserId()),
-                    objectMapper.writeValueAsString(new TransferResultPayload(
-                            transfer.getFromUserId(),
-                            transfer.getRequestId(),
-                            "SUCCESS",
-                            transfer.getId(),
-                            null
-                    ))
+            String toJson = objectMapper.writeValueAsString(new TransferResultPayload(
+                    transfer.getToUserId(),
+                    transfer.getRequestId(),
+                    "SUCCESS",
+                    transfer.getId(),
+                    null
             ));
-            rows.add(outboxRow(
-                    transfer,
-                    kafkaTopicsProperties.transferResult(),
-                    String.valueOf(transfer.getToUserId()),
-                    objectMapper.writeValueAsString(new TransferResultPayload(
-                            transfer.getToUserId(),
-                            transfer.getRequestId(),
-                            "SUCCESS",
-                            transfer.getId(),
-                            null
-                    ))
-            ));
-            eventOutboxRepository.saveAll(rows);
+            scheduleTransferResultAfterCommit(List.of(fromJson, toJson));
         } catch (JsonProcessingException e) {
             throw new IllegalStateException(e);
         }
@@ -156,35 +151,45 @@ public class TransferCommandProcessor {
 
     private void enqueueFailureResults(Transfer transfer) {
         try {
-            List<EventOutbox> rows = new ArrayList<>();
             String err = transfer.getErrorMessage();
-            rows.add(outboxRow(
-                    transfer,
-                    kafkaTopicsProperties.transferResult(),
-                    String.valueOf(transfer.getFromUserId()),
-                    objectMapper.writeValueAsString(new TransferResultPayload(
-                            transfer.getFromUserId(),
-                            transfer.getRequestId(),
-                            "FAILED",
-                            transfer.getId(),
-                            err
-                    ))
+            String fromJson = objectMapper.writeValueAsString(new TransferResultPayload(
+                    transfer.getFromUserId(),
+                    transfer.getRequestId(),
+                    "FAILED",
+                    transfer.getId(),
+                    err
             ));
-            rows.add(outboxRow(
-                    transfer,
-                    kafkaTopicsProperties.transferResult(),
-                    String.valueOf(transfer.getToUserId()),
-                    objectMapper.writeValueAsString(new TransferResultPayload(
-                            transfer.getToUserId(),
-                            transfer.getRequestId(),
-                            "FAILED",
-                            transfer.getId(),
-                            err
-                    ))
+            String toJson = objectMapper.writeValueAsString(new TransferResultPayload(
+                    transfer.getToUserId(),
+                    transfer.getRequestId(),
+                    "FAILED",
+                    transfer.getId(),
+                    err
             ));
-            eventOutboxRepository.saveAll(rows);
+            scheduleTransferResultAfterCommit(List.of(fromJson, toJson));
         } catch (JsonProcessingException e) {
             throw new IllegalStateException(e);
+        }
+    }
+
+    private void scheduleTransferResultAfterCommit(List<String> jsonPayloads) {
+        if (jsonPayloads.isEmpty()) {
+            return;
+        }
+        Runnable publish = () -> {
+            for (String json : jsonPayloads) {
+                transferResultRealtimePublisher.publish(json);
+            }
+        };
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    publish.run();
+                }
+            });
+        } else {
+            publish.run();
         }
     }
 

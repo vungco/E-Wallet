@@ -3,7 +3,8 @@ package com.app.ewallet.grpc;
 import io.grpc.Context;
 
 /**
- * Idempotency key được interceptor gắn vào Context trước khi vào {@link com.app.ewallet.grpc.WalletLedgerGrpcService}.
+ * Idempotency key được interceptor gắn vào Context cho RPC {@code DebitWallet}/{@code CreditWallet}
+ * trên {@link com.app.ewallet.grpc.WalletRegistryPublicGrpcService}.
  */
 public final class LedgerGrpcContext {
 

@@ -13,6 +13,10 @@ public final class GrpcMetadataKeys {
     public static final Metadata.Key<String> IDEMPOTENCY_KEY =
             Metadata.Key.of("idempotency-key", Metadata.ASCII_STRING_MARSHALLER);
 
+    /** Client gửi: {@code Bearer <access_token>} */
+    public static final Metadata.Key<String> AUTHORIZATION =
+            Metadata.Key.of("authorization", Metadata.ASCII_STRING_MARSHALLER);
+
     private GrpcMetadataKeys() {
     }
 }

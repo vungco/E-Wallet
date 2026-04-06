@@ -19,7 +19,8 @@ public final class GrpcExceptionMapper {
                 case NOT_FOUND -> Status.NOT_FOUND;
                 case BAD_REQUEST -> Status.INVALID_ARGUMENT;
                 case CONFLICT -> Status.FAILED_PRECONDITION;
-                case UNAUTHORIZED, FORBIDDEN -> Status.PERMISSION_DENIED;
+                case UNAUTHORIZED -> Status.UNAUTHENTICATED;
+                case FORBIDDEN -> Status.PERMISSION_DENIED;
                 default -> Status.UNKNOWN;
             };
             return status.withDescription(ae.getMessage()).asRuntimeException();

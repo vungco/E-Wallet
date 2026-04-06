@@ -1,10 +1,10 @@
 package com.app.ewallet.client;
 
 import com.app.ewallet.config.properties.WalletGrpcProperties;
-import com.app.ewallet.grpc.wallet.v1.CreditWalletRequest;
-import com.app.ewallet.grpc.wallet.v1.DebitWalletRequest;
-import com.app.ewallet.grpc.wallet.v1.WalletLedgerGrpc;
-import com.app.ewallet.grpc.wallet.v1.WalletOperationResponse;
+import com.app.ewallet.grpc.registry.v1.CreditWalletRequest;
+import com.app.ewallet.grpc.registry.v1.DebitWalletRequest;
+import com.app.ewallet.grpc.registry.v1.WalletOperationResult;
+import com.app.ewallet.grpc.registry.v1.WalletRegistryPublicGrpc;
 import io.grpc.ManagedChannel;
 import io.grpc.Metadata;
 import io.grpc.stub.MetadataUtils;
@@ -27,7 +27,7 @@ public class WalletLedgerGrpcClient {
     private final ManagedChannel walletRegistryGrpcChannel;
     private final WalletGrpcProperties walletGrpcProperties;
 
-    public WalletOperationResponse debit(long walletId, BigDecimal amount, String idempotencyKey) {
+    public WalletOperationResult debit(long walletId, BigDecimal amount, String idempotencyKey) {
         Metadata headers = buildMetadata(idempotencyKey);
         DebitWalletRequest req = DebitWalletRequest.newBuilder()
                 .setWalletId(walletId)
@@ -36,7 +36,7 @@ public class WalletLedgerGrpcClient {
         return blockingStub(headers).debitWallet(req);
     }
 
-    public WalletOperationResponse credit(long walletId, BigDecimal amount, String idempotencyKey) {
+    public WalletOperationResult credit(long walletId, BigDecimal amount, String idempotencyKey) {
         Metadata headers = buildMetadata(idempotencyKey);
         CreditWalletRequest req = CreditWalletRequest.newBuilder()
                 .setWalletId(walletId)
@@ -45,8 +45,8 @@ public class WalletLedgerGrpcClient {
         return blockingStub(headers).creditWallet(req);
     }
 
-    private WalletLedgerGrpc.WalletLedgerBlockingStub blockingStub(Metadata headers) {
-        return WalletLedgerGrpc.newBlockingStub(walletRegistryGrpcChannel)
+    private WalletRegistryPublicGrpc.WalletRegistryPublicBlockingStub blockingStub(Metadata headers) {
+        return WalletRegistryPublicGrpc.newBlockingStub(walletRegistryGrpcChannel)
                 .withDeadlineAfter(30, TimeUnit.SECONDS)
                 .withInterceptors(MetadataUtils.newAttachHeadersInterceptor(headers));
     }

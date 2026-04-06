@@ -1,4 +1,7 @@
 spring:
-  kafka:
-    consumer:
-      auto-offset-reset: earliest
+  application:
+    name: ws-gateway-test
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisReactiveAutoConfiguration
