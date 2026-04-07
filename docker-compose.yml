@@ -7,6 +7,7 @@
 #   DB: wallet_db, transfer_db, audit_db, notification_db (xem docker/mysql/init-multiple-dbs.sql)
 #   KAFKA_BOOTSTRAP_SERVERS=localhost:9092
 #   REDIS_HOST=localhost REDIS_PORT=6379  (notification-worker Pub/Sub → ws-gateway)
+#   Kafka UI (topic / message / consumer lag): http://localhost:8090 — docker compose up -d kafka-ui
 
 services:
   redis:
@@ -63,6 +64,19 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+
+  # Web UI — topic, messages, consumer groups / lag (nội bộ Docker: kafka:29092)
+  kafka-ui:
+    image: provectuslabs/kafka-ui:v0.7.2
+    container_name: ewallet-kafka-ui
+    restart: unless-stopped
+    depends_on:
+      - kafka
+    ports:
+      - "8090:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: ewallet-local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
 
 volumes:
   ewallet-mysql-data:
