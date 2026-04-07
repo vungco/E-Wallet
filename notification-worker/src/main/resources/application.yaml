@@ -1,3 +1,104 @@
 spring:
   application:
     name: notification-worker
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+
+  datasource:
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:notification_db}?useSSL=${DB_USE_SSL:false}&allowPublicKeyRetrieval=true&serverTimezone=UTC&characterEncoding=utf8
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX:10}
+      minimum-idle: ${DB_POOL_MIN:2}
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: ${REDIS_COMMAND_TIMEOUT:2s}
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        format_sql: true
+    show-sql: ${JPA_SHOW_SQL:false}
+
+  mail:
+    host: ${SMTP_HOST:}
+    port: ${SMTP_PORT:587}
+    username: ${SMTP_USERNAME:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: ${KAFKA_CONSUMER_GROUP:notification-worker}
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest
+    listener:
+      ack-mode: record
+
+server:
+  port: ${SERVER_PORT:8085}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+app:
+  redis:
+    pubsub:
+      transfer-result-channel: ${REDIS_TRANSFER_RESULT_CHANNEL:ewallet:transfer:result}
+
+  jwt:
+    secret: ${JWT_SECRET:dev-only-change-me-use-openssl-rand-hex-32-minimum}
+    issuer: ${JWT_ISSUER:wallet-registry}
+    access-token-expiration-minutes: ${JWT_ACCESS_MINUTES:15}
+    refresh-token-expiration-days: ${JWT_REFRESH_DAYS:30}
+
+  grpc:
+    server:
+      enabled: ${NOTIFICATION_GRPC_SERVER_ENABLED:true}
+      port: ${NOTIFICATION_GRPC_PORT:9095}
+      reflection-enabled: ${NOTIFICATION_GRPC_REFLECTION_ENABLED:false}
+      max-inbound-message-size-bytes: ${NOTIFICATION_GRPC_MAX_INBOUND_BYTES:4194304}
+
+  kafka:
+    topics:
+      wallet-transfer-completed: ${KAFKA_TOPIC_WALLET_TRANSFER_COMPLETED:wallet.transfer.completed}
+      wallet-transfer-failed: ${KAFKA_TOPIC_WALLET_TRANSFER_FAILED:wallet.transfer.failed}
+
+  mail:
+    # From (tuỳ chọn). Không set → dùng spring.mail.username (Gmail thường trùng địa chỉ đăng nhập SMTP)
+    from: ${MAIL_FROM:}
+
+---
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+logging:
+  level:
+    org.apache.kafka: WARN
+    org.hibernate.SQL: WARN

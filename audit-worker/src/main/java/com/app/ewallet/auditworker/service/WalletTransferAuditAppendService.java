@@ -33,7 +33,7 @@ public class WalletTransferAuditAppendService {
         row.setAmount(payload.amount());
         row.setFromUserId(payload.fromUserId());
         row.setToUserId(payload.toUserId());
-        row.setOccurredAt(payload.occurredAt());
+        row.setOccurredAt(payload.timestamp() != null ? payload.timestamp() : "");
         row.setPayloadJson(rawJson);
         row.setCreatedAt(Instant.now());
         try {

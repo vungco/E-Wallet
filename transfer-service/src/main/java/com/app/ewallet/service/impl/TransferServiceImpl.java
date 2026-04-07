@@ -46,7 +46,8 @@ public class TransferServiceImpl implements ITransferService {
             throw new InvalidTransferException("fromWalletId and toWalletId must differ");
         }
 
-        WalletRegistryWalletDto myWallet = walletRegistryPublicGrpcClient.getMyWallet(accessToken);
+        String walletInternalApiKey = walletRegistryPublicGrpcClient.requireInternalApiKey();
+        WalletRegistryWalletDto myWallet = walletRegistryPublicGrpcClient.getMyWallet(accessToken, walletInternalApiKey);
         if (myWallet == null
                 || !myWallet.walletId().equals(request.fromWalletId())
                 || !myWallet.userId().equals(authenticatedUserId)) {
@@ -61,6 +62,8 @@ public class TransferServiceImpl implements ITransferService {
         transfer.setToWalletId(request.toWalletId());
         transfer.setFromUserId(authenticatedUserId);
         transfer.setToUserId(request.toUserId());
+        transfer.setFromUserEmail(trimToNull(request.fromUserEmail()));
+        transfer.setToUserEmail(trimToNull(request.toUserEmail()));
         transfer.setAmount(amount);
         transfer.setStatus(TransferStatus.ACCEPTED);
         transferRepository.save(transfer);
@@ -109,5 +112,13 @@ public class TransferServiceImpl implements ITransferService {
                 t.getAmount(),
                 t.getErrorMessage()
         );
+    }
+
+    private static String trimToNull(String s) {
+        if (s == null) {
+            return null;
+        }
+        String t = s.trim();
+        return t.isEmpty() ? null : t;
     }
 }

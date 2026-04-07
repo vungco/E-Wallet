@@ -27,13 +27,6 @@ spring:
         format_sql: true
     show-sql: ${JPA_SHOW_SQL:false}
 
-  data:
-    redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD:}
-      timeout: ${REDIS_COMMAND_TIMEOUT:2s}
-
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     producer:
@@ -58,10 +51,6 @@ management:
         include: health,info
 
 app:
-  redis:
-    pubsub:
-      # Cùng kênh với ws-gateway — pub ngay sau commit (không qua Kafka)
-      transfer-result-channel: ${REDIS_TRANSFER_RESULT_CHANNEL:ewallet:transfer:result}
   outbox:
     publish-interval-ms: ${OUTBOX_PUBLISH_INTERVAL_MS:1000}
   jwt:
@@ -79,11 +68,13 @@ app:
     wallet:
       host: ${WALLET_GRPC_HOST:localhost}
       port: ${WALLET_GRPC_PORT:9090}
-      internal-api-key: ${WALLET_INTERNAL_API_KEY:}
+      # Trùng INTERNAL_API_KEY / WALLET_INTERNAL_API_KEY với wallet-registry (gateway) — bắt buộc khi REQUIRE_INTERNAL_KEY=true
+      internal-api-key: ${WALLET_INTERNAL_API_KEY:${INTERNAL_API_KEY:wallet-production}}
   kafka:
     topics:
       transfer-command: ${KAFKA_TOPIC_TRANSFER_COMMAND:transfer.command}
       wallet-transfer-completed: ${KAFKA_TOPIC_WALLET_TRANSFER_COMPLETED:wallet.transfer.completed}
+      wallet-transfer-failed: ${KAFKA_TOPIC_WALLET_TRANSFER_FAILED:wallet.transfer.failed}
 
 ---
 spring:

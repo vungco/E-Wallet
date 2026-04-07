@@ -9,10 +9,12 @@ import com.app.ewallet.grpc.transfer.v1.TransferServiceGrpc;
 import com.app.ewallet.service.interfaces.ITransferService;
 import io.grpc.stub.StreamObserver;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 
+@Slf4j
 @Service
 @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
         prefix = "app.grpc.server",
@@ -42,12 +44,22 @@ public class TransferGrpcEndpoint extends TransferServiceGrpc.TransferServiceImp
             if (amount.compareTo(new BigDecimal("0.0001")) < 0) {
                 throw new IllegalArgumentException("amount must be at least 0.0001");
             }
+            String fromEmail = request.hasFromUserEmail() ? request.getFromUserEmail().trim() : null;
+            if (fromEmail != null && fromEmail.isEmpty()) {
+                fromEmail = null;
+            }
+            String toEmail = request.hasToUserEmail() ? request.getToUserEmail().trim() : null;
+            if (toEmail != null && toEmail.isEmpty()) {
+                toEmail = null;
+            }
             CreateTransferRequest body = new CreateTransferRequest(
                     request.getRequestId(),
                     request.getFromWalletId(),
                     request.getToWalletId(),
                     request.getToUserId(),
-                    amount
+                    amount,
+                    fromEmail,
+                    toEmail
             );
             String accessToken = TransferGrpcContext.ACCESS_TOKEN.get();
             if (accessToken == null) {

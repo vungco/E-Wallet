@@ -34,6 +34,12 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(http).body(new ErrorResponse(grpcCode, msg));
     }
 
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ErrorResponse> handleIllegalArgument(IllegalArgumentException e) {
+        String msg = e.getMessage() != null ? e.getMessage() : "Bad request";
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ErrorResponse("BAD_REQUEST", msg));
+    }
+
     @ExceptionHandler(ResponseStatusException.class)
     public ResponseEntity<ErrorResponse> handleResponseStatus(ResponseStatusException e) {
         HttpStatus status = HttpStatus.valueOf(e.getStatusCode().value());

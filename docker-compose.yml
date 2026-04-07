@@ -4,9 +4,9 @@
 #
 # Ứng dụng trên host dùng:
 #   DB_HOST=localhost DB_PORT=3306 DB_USERNAME=root DB_PASSWORD=example
-#   DB: wallet_db, transfer_db, audit_db (xem docker/mysql/init-multiple-dbs.sql)
+#   DB: wallet_db, transfer_db, audit_db, notification_db (xem docker/mysql/init-multiple-dbs.sql)
 #   KAFKA_BOOTSTRAP_SERVERS=localhost:9092
-#   REDIS_HOST=localhost REDIS_PORT=6379  (Pub/Sub real-time transfer.result → ws-gateway)
+#   REDIS_HOST=localhost REDIS_PORT=6379  (notification-worker Pub/Sub → ws-gateway)
 
 services:
   redis:

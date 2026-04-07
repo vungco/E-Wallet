@@ -7,6 +7,8 @@ public record CreateTransferRequest(
         Long fromWalletId,
         Long toWalletId,
         Long toUserId,
-        BigDecimal amount
+        BigDecimal amount,
+        String fromUserEmail,
+        String toUserEmail
 ) {
 }

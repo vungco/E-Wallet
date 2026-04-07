@@ -126,7 +126,7 @@ Tài liệu mô tả **bài toán**, **kiến trúc**, **phụ thuộc giữa se
 | Service | DB | Việc làm |
 |---------|-----|----------|
 | **audit-worker** | `audit_db` | Consume `wallet.transfer.completed` — ghi **append-only**. |
-| **notification-worker** | tuỳ chọn | Email/push; idempotent theo `requestId` / `transactionId`. |
+| **notification-worker** | `notification_db` | Consume `wallet.transfer.completed` — lưu **thông báo in-app** (title, body, `transfer_status`, `read_flag`, idempotent `requestId:userId`); **email** qua interface (stub log, SMTP sau). |
 
 **Không** sửa `balance`.
 

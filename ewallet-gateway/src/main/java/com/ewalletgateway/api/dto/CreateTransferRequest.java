@@ -11,6 +11,9 @@ public record CreateTransferRequest(
         @NotNull Long fromWalletId,
         @NotNull Long toWalletId,
         @NotNull Long toUserId,
-        @NotNull @DecimalMin(value = "0.0001", inclusive = true) BigDecimal amount
+        @NotNull @DecimalMin(value = "0.0001", inclusive = true) BigDecimal amount,
+        /** Tuỳ chọn: đưa xuống Kafka để gửi mail không query lại users */
+        String fromUserEmail,
+        String toUserEmail
 ) {
 }

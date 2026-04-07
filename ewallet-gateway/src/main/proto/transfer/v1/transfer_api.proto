@@ -19,6 +19,8 @@ message CreateTransferRequest {
   int64 to_user_id = 4;
   // Chuỗi decimal, ví dụ "10.5000"
   string amount = 5;
+  optional string from_user_email = 6;
+  optional string to_user_email = 7;
 }
 
 message CreateTransferResponse {

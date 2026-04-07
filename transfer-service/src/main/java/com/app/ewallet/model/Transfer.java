@@ -43,6 +43,13 @@ public class Transfer {
     @Column(name = "to_user_id", nullable = false)
     private Long toUserId;
 
+    /** Đồng hành CreateTransferRequest — đưa vào Kafka completed để gửi mail không query lại */
+    @Column(name = "from_user_email", length = 320)
+    private String fromUserEmail;
+
+    @Column(name = "to_user_email", length = 320)
+    private String toUserEmail;
+
     @Column(nullable = false, precision = 19, scale = 4)
     private BigDecimal amount;
 

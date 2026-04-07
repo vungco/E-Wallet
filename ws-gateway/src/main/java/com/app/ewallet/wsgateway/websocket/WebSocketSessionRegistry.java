@@ -37,14 +37,22 @@ public class WebSocketSessionRegistry {
     public void broadcastToUser(long userId, String jsonPayload) {
         CopyOnWriteArraySet<WebSocketSession> set = userSessions.get(userId);
         if (set == null || set.isEmpty()) {
+            log.warn(
+                    "[ws-gateway] WS skip push: no open session for userId={} (client chưa mở /ws hoặc token khác tab). payloadLen={}",
+                    userId,
+                    jsonPayload != null ? jsonPayload.length() : 0
+            );
             return;
         }
+        int openCount = 0;
+        long t0 = System.nanoTime();
         TextMessage message = new TextMessage(jsonPayload);
         for (WebSocketSession session : set) {
             if (!session.isOpen()) {
                 set.remove(session);
                 continue;
             }
+            openCount++;
             try {
                 synchronized (session) {
                     session.sendMessage(message);
@@ -54,5 +62,12 @@ public class WebSocketSessionRegistry {
                 set.remove(session);
             }
         }
+        log.info(
+                "[ws-gateway] WS sent userId={} sessions={} payloadLen={} sendNs={}",
+                userId,
+                openCount,
+                jsonPayload != null ? jsonPayload.length() : 0,
+                System.nanoTime() - t0
+        );
     }
 }

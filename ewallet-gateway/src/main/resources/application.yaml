@@ -26,10 +26,16 @@ app:
     grpc:
       host: ${TRANSFER_GRPC_HOST:localhost}
       port: ${TRANSFER_GRPC_PORT:9093}
+      internal-api-key: ${TRANSFER_INTERNAL_API_KEY:${WALLET_INTERNAL_API_KEY:${INTERNAL_API_KEY:wallet-production}}}
+  notification:
+    grpc:
+      host: ${NOTIFICATION_GRPC_HOST:localhost}
+      port: ${NOTIFICATION_GRPC_PORT:9095}
   wallet-registry:
     host: ${WALLET_GRPC_HOST:localhost}
     port: ${WALLET_GRPC_PORT:9090}
-    internal-api-key: ${WALLET_INTERNAL_API_KEY:}
+    # Không để biến env rỗng (=) — dùng INTERNAL_API_KEY chung với wallet-registry hoặc default dev
+    internal-api-key: ${WALLET_INTERNAL_API_KEY:${INTERNAL_API_KEY:wallet-production}}
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://127.0.0.1:3000}
   jwt:

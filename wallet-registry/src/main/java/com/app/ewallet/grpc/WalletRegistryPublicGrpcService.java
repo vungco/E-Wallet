@@ -6,10 +6,13 @@ import com.app.ewallet.controller.dto.RegisterRequest;
 import com.app.ewallet.controller.dto.InternalWalletOperationResponse;
 import com.app.ewallet.controller.dto.RegisterResponse;
 import com.app.ewallet.controller.dto.TokenResponse;
+import com.app.ewallet.controller.dto.UserLookupResponse;
 import com.app.ewallet.controller.dto.WalletResponse;
 import com.app.ewallet.grpc.registry.v1.CreditWalletRequest;
 import com.app.ewallet.grpc.registry.v1.DebitWalletRequest;
 import com.app.ewallet.grpc.registry.v1.LoginUserRequest;
+import com.app.ewallet.grpc.registry.v1.LookupUserByEmailRequest;
+import com.app.ewallet.grpc.registry.v1.LookupUserByEmailResponse;
 import com.app.ewallet.grpc.registry.v1.RefreshTokenMsg;
 import com.app.ewallet.grpc.registry.v1.RegisterUserRequest;
 import com.app.ewallet.grpc.registry.v1.RegisterUserResponse;
@@ -29,6 +32,7 @@ import io.grpc.Metadata;
 import io.grpc.stub.StreamObserver;
 import io.jsonwebtoken.JwtException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -45,6 +49,7 @@ import java.math.BigDecimal;
         matchIfMissing = true
 )
 @RequiredArgsConstructor
+@Slf4j
 public class WalletRegistryPublicGrpcService extends WalletRegistryPublicGrpc.WalletRegistryPublicImplBase {
 
     private static final int IDEMPOTENCY_KEY_MAX_LEN = 128;
@@ -144,6 +149,30 @@ public class WalletRegistryPublicGrpcService extends WalletRegistryPublicGrpc.Wa
                     .setUserName(w.userName())
                     .setBalance(w.balance().toPlainString())
                     .setVersion(w.version())
+                    .build());
+            responseObserver.onCompleted();
+        } catch (Throwable e) {
+            responseObserver.onError(GrpcExceptionMapper.toStatus(e));
+        }
+    }
+
+    @Override
+    public void lookupUserByEmail(
+            LookupUserByEmailRequest request,
+            StreamObserver<LookupUserByEmailResponse> responseObserver
+    ) {
+        try {
+            UserPrincipal principal = requireBearerUser();
+            requireNonBlank(request.getEmail(), "email");
+            UserLookupResponse u = walletQueryService.lookupUserByEmail(request.getEmail().trim());
+            if (principal.userId().equals(u.userId())) {
+                throw new IllegalArgumentException("Cannot transfer to yourself");
+            }
+            responseObserver.onNext(LookupUserByEmailResponse.newBuilder()
+                    .setUserId(u.userId())
+                    .setWalletId(u.walletId())
+                    .setEmail(u.email())
+                    .setName(u.name())
                     .build());
             responseObserver.onCompleted();
         } catch (Throwable e) {
@@ -286,20 +315,32 @@ public class WalletRegistryPublicGrpcService extends WalletRegistryPublicGrpc.Wa
     private UserPrincipal requireBearerUser() {
         Metadata md = RegistryGrpcContext.HEADERS.get(Context.current());
         if (md == null) {
+            log.warn("[requireBearerUser] RegistryGrpcContext.HEADERS missing — interceptor did not attach metadata to Context");
             throw new IllegalStateException("Missing gRPC metadata context");
         }
         String auth = md.get(GrpcMetadataKeys.AUTHORIZATION);
-        if (auth == null || !auth.regionMatches(true, 0, "Bearer ", 0, 7)) {
+        if (auth == null) {
+            log.warn("[requireBearerUser] metadata 'authorization' absent (keys may be missing; check client sends lowercase header name)");
+            throw io.grpc.Status.UNAUTHENTICATED.withDescription("Missing or invalid Authorization metadata").asRuntimeException();
+        }
+        if (!auth.regionMatches(true, 0, "Bearer ", 0, 7)) {
+            log.warn(
+                    "[requireBearerUser] authorization header must start with 'Bearer ' (prefix check failed); value length={}",
+                    auth.length()
+            );
             throw io.grpc.Status.UNAUTHENTICATED.withDescription("Missing or invalid Authorization metadata").asRuntimeException();
         }
         String token = auth.substring(7).trim();
+
         if (token.isEmpty()) {
+            log.warn("[requireBearerUser] Bearer prefix present but access token is empty after trim");
             throw io.grpc.Status.UNAUTHENTICATED.withDescription("Missing or invalid Authorization metadata").asRuntimeException();
         }
         try {
             var claims = jwtService.parseAndValidate(token);
             return new UserPrincipal(jwtService.getUserId(claims), jwtService.getEmail(claims));
         } catch (JwtException | IllegalArgumentException e) {
+            log.warn("[requireBearerUser] JWT parse/validate failed: {} — check JWT_SECRET/issuer/expiry vs token", e.getMessage(), e);
             throw io.grpc.Status.UNAUTHENTICATED.withDescription("Invalid or expired access token").asRuntimeException();
         }
     }

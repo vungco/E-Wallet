@@ -19,6 +19,7 @@ service WalletRegistryPublic {
   rpc Logout (RefreshTokenMsg) returns (google.protobuf.Empty);
   rpc LogoutAll (google.protobuf.Empty) returns (google.protobuf.Empty);
   rpc GetWallet (google.protobuf.Empty) returns (WalletSnapshot);
+  rpc LookupUserByEmail (LookupUserByEmailRequest) returns (LookupUserByEmailResponse);
   rpc Deposit (UserFundRequest) returns (WalletOperationResult);
   rpc Withdraw (UserFundRequest) returns (WalletOperationResult);
   rpc DebitWallet (DebitWalletRequest) returns (WalletOperationResult);
@@ -60,6 +61,17 @@ message WalletSnapshot {
   string user_name = 3;
   string balance = 4;
   int64 version = 5;
+}
+
+message LookupUserByEmailRequest {
+  string email = 1;
+}
+
+message LookupUserByEmailResponse {
+  int64 user_id = 1;
+  int64 wallet_id = 2;
+  string email = 3;
+  string name = 4;
 }
 
 message UserFundRequest {

@@ -1,6 +1,8 @@
 package com.ewalletgateway.client;
 
 import com.app.ewallet.grpc.registry.v1.LoginUserRequest;
+import com.app.ewallet.grpc.registry.v1.LookupUserByEmailRequest;
+import com.app.ewallet.grpc.registry.v1.LookupUserByEmailResponse;
 import com.app.ewallet.grpc.registry.v1.RefreshTokenMsg;
 import com.app.ewallet.grpc.registry.v1.RegisterUserRequest;
 import com.app.ewallet.grpc.registry.v1.RegisterUserResponse;
@@ -14,10 +16,12 @@ import com.ewalletgateway.api.dto.RefreshTokenRequest;
 import com.ewalletgateway.api.dto.RegisterRequest;
 import com.ewalletgateway.api.dto.RegisterResponse;
 import com.ewalletgateway.api.dto.TokenResponse;
+import com.ewalletgateway.api.dto.UserLookupResponse;
 import com.ewalletgateway.api.dto.WalletFundRequest;
 import com.ewalletgateway.api.dto.WalletOperationResponse;
 import com.ewalletgateway.api.dto.WalletResponse;
 import com.ewalletgateway.config.properties.WalletRegistryProperties;
+import com.ewalletgateway.grpc.GatewayGrpcMetadataSupport;
 import com.google.protobuf.Empty;
 import io.grpc.ManagedChannel;
 import io.grpc.Metadata;
@@ -33,13 +37,9 @@ import java.util.concurrent.TimeUnit;
 @RequiredArgsConstructor
 public class WalletRegistryPublicGrpcClient {
 
-    private static final Metadata.Key<String> KEY_INTERNAL =
-            Metadata.Key.of("x-internal-api-key", Metadata.ASCII_STRING_MARSHALLER);
-    private static final Metadata.Key<String> KEY_AUTHORIZATION =
-            Metadata.Key.of("authorization", Metadata.ASCII_STRING_MARSHALLER);
-
     private final ManagedChannel walletRegistryGrpcChannel;
     private final WalletRegistryProperties walletRegistryProperties;
+    private final GatewayGrpcMetadataSupport grpcMetadata;
 
     public RegisterResponse register(RegisterRequest request) {
         RegisterUserResponse r = blockingStub(baseMetadata()).register(
@@ -80,21 +80,40 @@ public class WalletRegistryPublicGrpcClient {
     }
 
     public void logoutAll(String authorizationHeader) {
-        Metadata md = baseMetadata();
-        md.put(KEY_AUTHORIZATION, authorizationHeader);
-        blockingStub(md).logoutAll(Empty.getDefaultInstance());
+        blockingStub(fundMetadata(authorizationHeader)).logoutAll(Empty.getDefaultInstance());
     }
 
     public WalletResponse getWallet(String authorizationHeader) {
-        Metadata md = baseMetadata();
-        md.put(KEY_AUTHORIZATION, authorizationHeader);
-        WalletSnapshot w = blockingStub(md).getWallet(Empty.getDefaultInstance());
+        WalletSnapshot w = blockingStub(fundMetadata(authorizationHeader)).getWallet(Empty.getDefaultInstance());
         return new WalletResponse(
                 w.getWalletId(),
                 w.getUserId(),
                 w.getUserName(),
                 new BigDecimal(w.getBalance()),
                 w.getVersion()
+        );
+    }
+
+    /**
+     * Tra user + ví theo email. Bắt buộc gửi metadata:
+     * {@code x-internal-api-key} (gateway → registry) và {@code authorization} (JWT user).
+     */
+    public UserLookupResponse lookupUserByEmail(String authorizationHeader, String email) {
+        if (!StringUtils.hasText(email)) {
+            throw new IllegalArgumentException("email must not be blank");
+        }
+        if (!StringUtils.hasText(authorizationHeader)) {
+            throw new IllegalArgumentException("authorization header must not be blank");
+        }
+        String trimmed = email.trim();
+        LookupUserByEmailResponse r = blockingStub(fundMetadata(authorizationHeader)).lookupUserByEmail(
+                LookupUserByEmailRequest.newBuilder().setEmail(trimmed).build()
+        );
+        return new UserLookupResponse(
+                r.getUserId(),
+                r.getWalletId(),
+                r.getEmail(),
+                r.getName()
         );
     }
 
@@ -116,9 +135,10 @@ public class WalletRegistryPublicGrpcClient {
         ));
     }
 
+    /** Internal key (nếu cấu hình) + {@code Authorization} — ví, nạp/rút, logout all. */
     private Metadata fundMetadata(String authorizationHeader) {
         Metadata md = baseMetadata();
-        md.put(KEY_AUTHORIZATION, authorizationHeader);
+        md.put(GatewayGrpcMetadataSupport.AUTHORIZATION, authorizationHeader);
         return md;
     }
 
@@ -139,9 +159,7 @@ public class WalletRegistryPublicGrpcClient {
 
     private Metadata baseMetadata() {
         Metadata md = new Metadata();
-        if (StringUtils.hasText(walletRegistryProperties.internalApiKey())) {
-            md.put(KEY_INTERNAL, walletRegistryProperties.internalApiKey());
-        }
+        grpcMetadata.putInternalApiKey(md, walletRegistryProperties.internalApiKey(), "wallet-registry");
         return md;
     }
 

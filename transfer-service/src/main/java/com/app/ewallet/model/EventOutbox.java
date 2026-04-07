@@ -7,7 +7,6 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
-import jakarta.persistence.Lob;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
@@ -38,8 +37,8 @@ public class EventOutbox {
     @Column(name = "partition_key", nullable = false, length = 64)
     private String partitionKey;
 
-    @Lob
-    @Column(name = "payload_json", nullable = false)
+    /** MySQL: LONGTEXT — tránh Hibernate map {@code @Lob} thành cột quá ngắn (truncation khi JSON dài). */
+    @Column(name = "payload_json", nullable = false, columnDefinition = "LONGTEXT")
     private String payloadJson;
 
     @Column(name = "published_at")

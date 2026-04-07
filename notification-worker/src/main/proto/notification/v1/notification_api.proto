@@ -1,0 +1,71 @@
+syntax = "proto3";
+
+package notification.v1;
+
+option java_multiple_files = true;
+option java_package = "com.app.ewallet.grpc.notification.v1";
+option java_outer_classname = "NotificationApiProto";
+
+// Metadata: authorization = "Bearer <JWT>" — cùng issuer/secret với wallet-registry.
+service NotificationService {
+  rpc ListNotifications (ListNotificationsRequest) returns (ListNotificationsResponse);
+  rpc CountUnread (CountUnreadRequest) returns (CountUnreadResponse);
+  rpc GetNotification (GetNotificationRequest) returns (GetNotificationResponse);
+  rpc MarkAsRead (MarkAsReadRequest) returns (MarkAsReadResponse);
+}
+
+enum NotificationFilter {
+  NOTIFICATION_FILTER_UNSPECIFIED = 0;
+  UNREAD = 1;
+  READ = 2;
+}
+
+message ListNotificationsRequest {
+  NotificationFilter filter = 1;
+  // Phân trang cursor: 0 = trang đầu; trang sau = id nhỏ nhất của trang trước (next_cursor).
+  int64 cursor_before_id = 2;
+  int32 page_size = 3;
+}
+
+message ListNotificationsResponse {
+  repeated NotificationItem items = 1;
+  string next_cursor = 2;
+  bool has_more = 3;
+}
+
+message NotificationItem {
+  int64 id = 1;
+  string title = 2;
+  string body = 3;
+  string transfer_status = 4;
+  bool read = 5;
+  string request_id = 6;
+  int64 transaction_id = 7;
+  string amount = 8;
+  int64 counterpart_user_id = 9;
+  string user_role = 10;
+  string created_at = 11;
+}
+
+message CountUnreadRequest {}
+
+message CountUnreadResponse {
+  int64 count = 1;
+}
+
+message GetNotificationRequest {
+  int64 id = 1;
+  bool mark_read = 2;
+}
+
+message GetNotificationResponse {
+  NotificationItem item = 1;
+}
+
+message MarkAsReadRequest {
+  int64 id = 1;
+}
+
+message MarkAsReadResponse {
+  bool updated = 1;
+}

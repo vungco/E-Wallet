@@ -20,21 +20,26 @@ public class TransferResultRedisSubscriber {
 
     /** Được gọi bởi {@link org.springframework.data.redis.listener.adapter.MessageListenerAdapter} */
     public void onMessage(String json) {
-        log.debug("Redis Pub/Sub raw message (len={}): {}", json != null ? json.length() : 0, json);
+        long tRecv = System.nanoTime();
+        int len = json != null ? json.length() : 0;
+        log.debug("[ws-gateway] Redis message raw len={}", len);
         try {
             TransferResultPayload payload = objectMapper.readValue(json, TransferResultPayload.class);
+            long tParsed = System.nanoTime();
             log.info(
-                    "Redis transfer result received: userId={} requestId={} status={} transactionId={}",
+                    "[ws-gateway] Redis SUBSCRIBE parsed userId={} requestId={} status={} txId={} parseNs={}",
                     payload.userId(),
                     payload.requestId(),
                     payload.status(),
-                    payload.transactionId()
+                    payload.transactionId(),
+                    tParsed - tRecv
             );
             sessionRegistry.broadcastToUser(payload.userId(), json);
             log.info(
-                    "Redis transfer result pushed to WebSocket: userId={} requestId={}",
+                    "[ws-gateway] WS broadcast finished userId={} requestId={} totalNsSinceReceive={}",
                     payload.userId(),
-                    payload.requestId()
+                    payload.requestId(),
+                    System.nanoTime() - tRecv
             );
         } catch (Exception e) {
             log.warn("Failed to handle transfer result from Redis: {}", e.getMessage(), e);

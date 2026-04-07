@@ -2,13 +2,13 @@ package com.app.ewallet.service;
 
 import com.app.ewallet.client.WalletLedgerGrpcClient;
 import com.app.ewallet.config.properties.KafkaTopicsProperties;
+import com.app.ewallet.grpc.registry.v1.WalletOperationResult;
 import com.app.ewallet.kafka.dto.TransferCommandPayload;
-import com.app.ewallet.kafka.dto.TransferResultPayload;
 import com.app.ewallet.kafka.dto.WalletTransferCompletedPayload;
+import com.app.ewallet.kafka.dto.WalletTransferFailedPayload;
 import com.app.ewallet.model.EventOutbox;
 import com.app.ewallet.model.Transfer;
 import com.app.ewallet.model.TransferStatus;
-import com.app.ewallet.redis.TransferResultRealtimePublisher;
 import com.app.ewallet.repository.EventOutboxRepository;
 import com.app.ewallet.repository.TransferRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -18,14 +18,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.OffsetDateTime;
-import java.util.ArrayList;
-import java.util.List;
+import java.time.Instant;
 
 @Service
 @RequiredArgsConstructor
@@ -37,7 +33,6 @@ public class TransferCommandProcessor {
     private final WalletLedgerGrpcClient walletLedgerGrpcClient;
     private final ObjectMapper objectMapper;
     private final KafkaTopicsProperties kafkaTopicsProperties;
-    private final TransferResultRealtimePublisher transferResultRealtimePublisher;
 
     @Transactional
     public void process(TransferCommandPayload payload) {
@@ -62,8 +57,9 @@ public class TransferCommandProcessor {
         transfer = transferRepository.findByRequestId(payload.requestId()).orElseThrow();
         BigDecimal amount = new BigDecimal(payload.amount()).setScale(4, RoundingMode.HALF_UP);
 
+        WalletOperationResult debitResult;
         try {
-            walletLedgerGrpcClient.debit(
+            debitResult = walletLedgerGrpcClient.debit(
                     payload.fromWalletId(),
                     amount,
                     payload.requestId() + "-debit"
@@ -75,8 +71,9 @@ public class TransferCommandProcessor {
             return;
         }
 
+        WalletOperationResult creditResult;
         try {
-            walletLedgerGrpcClient.credit(
+            creditResult = walletLedgerGrpcClient.credit(
                     payload.toWalletId(),
                     amount,
                     payload.requestId() + "-credit"
@@ -100,26 +97,32 @@ public class TransferCommandProcessor {
         transfer.setStatus(TransferStatus.SUCCESS);
         transfer.setErrorMessage(null);
         transferRepository.save(transfer);
-        enqueueSuccessEvents(transfer);
+        enqueueSuccessEvents(transfer, debitResult, creditResult);
     }
 
     private void fail(Transfer transfer, String message) {
         transfer.setStatus(TransferStatus.FAILED);
         transfer.setErrorMessage(message != null && message.length() > 500 ? message.substring(0, 500) : message);
         transferRepository.save(transfer);
-        enqueueFailureResults(transfer);
+        enqueueFailureEvent(transfer);
     }
 
-    private void enqueueSuccessEvents(Transfer transfer) {
+    private void enqueueSuccessEvents(Transfer transfer, WalletOperationResult debitResult, WalletOperationResult creditResult) {
         try {
-            String occurredAt = OffsetDateTime.now().toString();
+            String timestamp = Instant.now().toString();
+            BigDecimal fromBalanceAfter = new BigDecimal(debitResult.getBalanceAfter().trim());
+            BigDecimal toBalanceAfter = new BigDecimal(creditResult.getBalanceAfter().trim());
             WalletTransferCompletedPayload completed = new WalletTransferCompletedPayload(
                     transfer.getId(),
                     transfer.getRequestId(),
                     transfer.getAmount(),
                     transfer.getFromUserId(),
                     transfer.getToUserId(),
-                    occurredAt
+                    timestamp,
+                    transfer.getFromUserEmail(),
+                    transfer.getToUserEmail(),
+                    fromBalanceAfter,
+                    toBalanceAfter
             );
             EventOutbox completedRow = outboxRow(
                     transfer,
@@ -128,68 +131,29 @@ public class TransferCommandProcessor {
                     objectMapper.writeValueAsString(completed)
             );
             eventOutboxRepository.save(completedRow);
-
-            String fromJson = objectMapper.writeValueAsString(new TransferResultPayload(
-                    transfer.getFromUserId(),
-                    transfer.getRequestId(),
-                    "SUCCESS",
-                    transfer.getId(),
-                    null
-            ));
-            String toJson = objectMapper.writeValueAsString(new TransferResultPayload(
-                    transfer.getToUserId(),
-                    transfer.getRequestId(),
-                    "SUCCESS",
-                    transfer.getId(),
-                    null
-            ));
-            scheduleTransferResultAfterCommit(List.of(fromJson, toJson));
         } catch (JsonProcessingException e) {
             throw new IllegalStateException(e);
         }
     }
 
-    private void enqueueFailureResults(Transfer transfer) {
+    private void enqueueFailureEvent(Transfer transfer) {
         try {
-            String err = transfer.getErrorMessage();
-            String fromJson = objectMapper.writeValueAsString(new TransferResultPayload(
+            WalletTransferFailedPayload failed = new WalletTransferFailedPayload(
+                    transfer.getId(),
+                    transfer.getRequestId(),
                     transfer.getFromUserId(),
-                    transfer.getRequestId(),
-                    "FAILED",
-                    transfer.getId(),
-                    err
-            ));
-            String toJson = objectMapper.writeValueAsString(new TransferResultPayload(
                     transfer.getToUserId(),
-                    transfer.getRequestId(),
-                    "FAILED",
-                    transfer.getId(),
-                    err
-            ));
-            scheduleTransferResultAfterCommit(List.of(fromJson, toJson));
+                    transfer.getErrorMessage()
+            );
+            EventOutbox row = outboxRow(
+                    transfer,
+                    kafkaTopicsProperties.walletTransferFailed(),
+                    String.valueOf(transfer.getFromUserId()),
+                    objectMapper.writeValueAsString(failed)
+            );
+            eventOutboxRepository.save(row);
         } catch (JsonProcessingException e) {
             throw new IllegalStateException(e);
-        }
-    }
-
-    private void scheduleTransferResultAfterCommit(List<String> jsonPayloads) {
-        if (jsonPayloads.isEmpty()) {
-            return;
-        }
-        Runnable publish = () -> {
-            for (String json : jsonPayloads) {
-                transferResultRealtimePublisher.publish(json);
-            }
-        };
-        if (TransactionSynchronizationManager.isSynchronizationActive()) {
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    publish.run();
-                }
-            });
-        } else {
-            publish.run();
         }
     }
 

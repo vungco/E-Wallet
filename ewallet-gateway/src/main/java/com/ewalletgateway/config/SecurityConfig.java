@@ -38,8 +38,10 @@ public class SecurityConfig {
                         .requestMatchers(gatewayPublicEndpointsMatcher).permitAll()
                         .requestMatchers(
                                 "/api/v1/wallets/**",
+                                "/api/v1/users/**",
                                 "/api/v1/transfers/**",
                                 "/api/v1/transactions/**",
+                                "/api/v1/notifications/**",
                                 "/api/v1/auth/logout",
                                 "/api/v1/auth/logout/all"
                         ).authenticated()
